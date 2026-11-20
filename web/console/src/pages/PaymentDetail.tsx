@@ -30,6 +30,7 @@ import {
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AttestationCard } from '../components/AttestationCard';
+import { MandateViewer } from '../components/MandateViewer';
 import { ReasonChips } from '../components/ReasonChips';
 
 export function PaymentDetail(): ReactNode {
@@ -165,7 +166,10 @@ export function PaymentDetail(): ReactNode {
           <dt>Mandate</dt>
           <dd>
             {payment.mandateId ? (
-              <code className="pr-mono">{payment.mandateId}</code>
+              <>
+                <code className="pr-mono">{payment.mandateId}</code>
+                <MandateViewer mandateId={payment.mandateId} />
+              </>
             ) : (
               <span className="pr-muted">
                 No mandate yet. One exists only once an approver has signed this exact
