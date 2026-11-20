@@ -50,6 +50,10 @@ class LocalKeySigner:
         )
         return signature, self.key_version
 
+    def sign(self, canonical_mandate_bytes: bytes) -> tuple[bytes, str]:
+        """Alias for sign_mandate."""
+        return self.sign_mandate(canonical_mandate_bytes)
+
     def get_public_key_pem(self) -> tuple[str, str]:
         public_key = self.private_key.public_key()
         pem = public_key.public_bytes(
@@ -93,6 +97,10 @@ class KmsMandateSigner:
         )
         response = self.client.asymmetric_sign(request=request)
         return response.signature, self.key_version_name
+
+    def sign(self, canonical_mandate_bytes: bytes) -> tuple[bytes, str]:
+        """Alias for sign_mandate."""
+        return self.sign_mandate(canonical_mandate_bytes)
 
     def get_public_key_pem(self) -> tuple[str, str]:
         request = kms_v1.GetPublicKeyRequest(name=self.key_version_name)
