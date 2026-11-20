@@ -1347,6 +1347,10 @@ components:
           type: array
           items:
             type: string
+        approval:
+          oneOf:
+            - $ref: '#/components/schemas/ApprovalEvidence'
+            - type: 'null'
         mandate_id:
           type: [string, 'null']
         agent_request_id:
@@ -1382,6 +1386,57 @@ components:
                 type: [string, 'null']
               mismatch:
                 type: boolean
+    ApprovalEvidence:
+      type: object
+      description: |
+        ADDED IN M1 by Shoaib, needs Prajit's approval.
+
+        What signed a payment, and what the device looked like when it did. The
+        console's attestation card renders exactly this. Prajit owns every value;
+        the web lane only displays them.
+
+        Every security field is nullable, and **null is not false**. A null means
+        Pramaan has no result for that check, and the card says "couldn't verify"
+        rather than showing a pass or a failure. `signature_verified: false` is a
+        different thing from null and is shown as a plain failure.
+
+        This mirrors `holds/{intentId}.approval` in contracts/firestore.md.
+      required: [approver, decision, signed_at]
+      properties:
+        approver:
+          type: string
+        decision:
+          $ref: '#/components/schemas/Decision'
+        signed_at:
+          $ref: '#/components/schemas/Timestamp'
+        verified_at:
+          type: [string, 'null']
+        device_id:
+          type: [string, 'null']
+        phone_model:
+          type: [string, 'null']
+        key_security_level:
+          oneOf:
+            - $ref: '#/components/schemas/KeySecurityLevel'
+            - type: 'null'
+        patch_level:
+          type: [string, 'null']
+        integrity_verdict:
+          type: [string, 'null']
+          description: |
+            The Play Integrity verdict, only when the server really decoded one.
+            Null until an app installed from a Play internal testing track exists.
+        attestation_root:
+          type: [string, 'null']
+          description: Which Google attestation root the certificate chain reached.
+        boot_state:
+          type: [string, 'null']
+        bootloader_locked:
+          type: [boolean, 'null']
+        signature_verified:
+          type: [boolean, 'null']
+        nonce_fresh:
+          type: [boolean, 'null']
     Step:
       type: object
       description: One line of the payment timeline.

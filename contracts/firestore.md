@@ -62,6 +62,7 @@ payment status.
 | `policyVersion` | string or null | |
 | `approvers` | array of string | work emails from the approval matrix |
 | `approver` | string or null | who actually decided |
+| `approval` | map or null | the signed decision and its attestation evidence; see below. Null until a signature has been verified |
 | `mandateId` | string or null | set once a mandate exists |
 | `agentRequestId` | string or null | set when an agent raised it |
 | `payoutId` | string or null | set once the sandbox bank paid |
@@ -71,6 +72,42 @@ payment status.
 
 Indexes the console needs: `status` ascending with `createdAt` descending, and
 `tier` descending with `createdAt` descending (the board sorts by risk).
+
+### `holds/{intentId}.approval`
+
+**Added in M1 by Shoaib, needs Prajit's approval.** The console's payment detail
+shows an attestation card: what signed this payment, where the key lives, and what
+the device looked like at the time. That evidence has to reach the read model, and
+nothing in the M0 draft carried it.
+
+Written once, by the API, after a device signature verifies. Prajit owns every
+value here; the console only displays them.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `approver` | string | work email of whoever signed |
+| `decision` | string | `approve`, `decline` or `report_fraud` |
+| `signedAt` | timestamp | when the phone signed |
+| `verifiedAt` | timestamp or null | when the server finished verifying |
+| `deviceId` | string or null | `dv_` prefixed, links to `devices/{deviceId}` |
+| `phoneModel` | string or null | shown so a person recognises the phone |
+| `keySecurityLevel` | string or null | `StrongBox`, `TrustedEnvironment` or `Software` |
+| `patchLevel` | string or null | `YYYY-MM-DD` |
+| `integrityVerdict` | string or null | the Play Integrity verdict |
+| `attestationRoot` | string or null | which Google attestation root the chain reached |
+| `bootState` | string or null | `Verified` when verified boot reported it |
+| `bootloaderLocked` | boolean or null | |
+| `signatureVerified` | boolean or null | whether the device signature checked out |
+| `nonceFresh` | boolean or null | whether the nonce was fresh and unused |
+
+**Every one of these may be null, and null is not false.** A null renders
+"couldn't verify" on the attestation card, never a pass and never a failure. This
+matters most for `integrityVerdict`: Play Integrity only recognises builds
+installed from a Play internal testing track, so until that track exists there will
+be no verdicts at all, and no screen may imply otherwise.
+
+`signatureVerified: false` is different from null, and the card says so plainly:
+false means Pramaan checked and the signature did not verify.
 
 ## `holds/{intentId}/steps/{n}`
 
