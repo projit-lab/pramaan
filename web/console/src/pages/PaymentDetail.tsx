@@ -23,6 +23,7 @@ import {
   LoadingState,
   ModelArmorBadge,
   type Step,
+  RouteBadge,
   StatusBadge,
   TierBadge,
   formatIstWithRelative,
@@ -269,6 +270,7 @@ function StateBandForPayment({ payment }: { payment: Hold }): ReactNode {
         <div className="pm-row" style={{ alignSelf: 'flex-start' }}>
           <StatusBadge status={payment.status} onBand />
           <TierBadge tier={payment.tier} />
+          <RouteBadge route={payment.entryRoute} />
         </div>
         <AmountBlock
           paise={payment.amountPaise}

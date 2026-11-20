@@ -133,6 +133,15 @@ export interface ApprovalEvidence {
 }
 
 /**
+ * Which door the instruction came through. The demo fires all four at once and
+ * they all land on the same board, in front of the same approver: that identity
+ * of treatment is the argument, so the route is shown, never hidden.
+ *
+ * Matches `entry_route` on the intent in contracts/openapi.yaml.
+ */
+export type EntryRoute = 'erp' | 'bank_file' | 'payout_api' | 'agent';
+
+/**
  * M2+. Which lane the sorter put a payment in. First matching row wins, so
  * nothing slips into a lighter lane:
  *
@@ -204,6 +213,8 @@ export interface Hold {
   approvers?: string[];
   approver?: string | null;
   approval?: ApprovalEvidence | null;
+  /** Which door this came through. Null on rows written before the doors existed. */
+  entryRoute?: EntryRoute | null;
   /** M2+. Null until the lane sorter has run. */
   lane?: Lane | null;
   ruleHit?: RuleHit | null;
