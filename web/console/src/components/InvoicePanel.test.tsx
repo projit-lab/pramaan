@@ -72,13 +72,16 @@ describe('the poisoned invoice', () => {
 
   it('labels the extracted fields as AI-written', () => {
     render(<InvoicePanel invoice={poisoned} />);
-    expect(screen.getByText(/read by Gemini/)).toBeInTheDocument();
-    expect(screen.getByText(/compared against the vendor master by rules/)).toBeInTheDocument();
+    expect(screen.getByText('AI extraction · Gemini')).toBeInTheDocument();
+    expect(screen.getByText(/Gemini read these fields/)).toBeInTheDocument();
   });
 
   it('says the comparison is a rule, not the model', () => {
     render(<InvoicePanel invoice={poisoned} />);
-    expect(screen.getByText(/comparison is a rule, not a judgement by the model/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/A rule compared them against the vendor master/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not a judgement by the model/)).toBeInTheDocument();
   });
 
   it('renders a paise amount as money, not as raw digits', () => {
@@ -114,12 +117,13 @@ describe('a clean invoice', () => {
 
   it('still labels the extraction as AI-written', () => {
     render(<InvoicePanel invoice={clean} />);
-    expect(screen.getByText(/read by Gemini/)).toBeInTheDocument();
+    expect(screen.getByText('AI extraction · Gemini')).toBeInTheDocument();
   });
 
-  it('does not show the mismatch footnote', () => {
+  it('does not claim a mismatch it did not find', () => {
     render(<InvoicePanel invoice={clean} />);
-    expect(screen.queryByText(/comparison is a rule/)).not.toBeInTheDocument();
+    expect(screen.getByText(/found no disagreement/)).toBeInTheDocument();
+    expect(screen.queryByText(/not a judgement by the model/)).not.toBeInTheDocument();
   });
 });
 
