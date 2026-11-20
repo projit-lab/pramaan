@@ -50,6 +50,14 @@ class IntentCreate(BaseModel):
     # M2+: where in the organisation the payment belongs; defaults to the
     # company's accounts-payable department.
     department_id: str | None = Field(default=None, pattern=r"^org_[A-Za-z0-9_]+$")
+    # The system the payment came in through. Defaults from the initiator.
+    entry_route: Literal["erp", "bank_file", "payout_api", "agent"] | None = None
+
+    @property
+    def route(self) -> str:
+        if self.entry_route:
+            return self.entry_route
+        return "agent" if self.initiator.type == "agent" else "erp"
 
     @model_validator(mode="after")
     def _check(self) -> IntentCreate:

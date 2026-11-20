@@ -1447,6 +1447,22 @@ components:
             PROPOSAL (Danish, M2+), needs Prajit's and Shoaib's approval. Where in
             the organisation tree the payment belongs. Defaults to the company's
             accounts-payable department.
+        entry_route:
+          oneOf:
+            - $ref: '#/components/schemas/EntryRoute'
+            - type: 'null'
+          description: |
+            How the payment reached Pramaan. When omitted: `agent` if the initiator
+            is an agent, otherwise `erp`.
+    EntryRoute:
+      type: string
+      description: |
+        The system the payment came in through, separate from instruction_channel
+        (how the instruction reached the person who keyed it). erp = an ERP
+        connector such as the mock Acme ERP; bank_file = a bulk payment file
+        uploaded to the bank portal; payout_api = a payouts API call; agent = the
+        ADK payables agent through the MCP server.
+      enum: [erp, bank_file, payout_api, agent]
     Lane:
       type: string
       description: |
@@ -1674,6 +1690,8 @@ components:
         department_id:
           type: [string, 'null']
           description: PROPOSAL (Danish, M2+).
+        entry_route:
+          $ref: '#/components/schemas/EntryRoute'
         lane:
           oneOf:
             - $ref: '#/components/schemas/Lane'

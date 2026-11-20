@@ -218,6 +218,7 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
             "amount_paise": body.amount,
             "currency": "INR",
             "channel": body.instruction_channel,
+            "entry_route": body.route,
             "initiator_type": body.initiator.type,
             "hour_ist": now.astimezone(IST).hour,
             "weekday_ist": now.astimezone(IST).isoweekday(),
@@ -339,6 +340,7 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
             purpose=body.purpose,
             invoice_sha256=body.invoice_sha256,
             instruction_channel=body.instruction_channel,
+            entry_route=body.route,
             instruction_note=body.instruction_note,
             initiator_type=body.initiator.type,
             initiator_id=body.initiator.id,
@@ -433,6 +435,7 @@ def _event_payloads(intent: PaymentIntent, approvals: list[Approval]) -> dict[st
             "purpose": intent.purpose,
             "invoice_sha256": intent.invoice_sha256,
             "instruction_channel": intent.instruction_channel,
+            "entry_route": intent.entry_route,
             "initiator": {"type": intent.initiator_type, "id": intent.initiator_id},
         },
         "decided": {
