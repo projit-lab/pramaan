@@ -12,6 +12,7 @@
 import { AppHeader, RoleGate, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { AgentRun } from './pages/AgentRun';
 import { NewPayment } from './pages/NewPayment';
 import { PaymentStatus } from './pages/PaymentStatus';
 import { Payments } from './pages/Payments';
@@ -78,6 +79,14 @@ export function App(): ReactNode {
         element={
           <ClerkRoute>
             <PaymentStatus />
+          </ClerkRoute>
+        }
+      />
+      <Route
+        path="/agent-runs/:agentRequestId"
+        element={
+          <ClerkRoute>
+            <AgentRun />
           </ClerkRoute>
         }
       />
