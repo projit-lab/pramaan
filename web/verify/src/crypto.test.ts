@@ -250,4 +250,98 @@ describe('mandate verifier crypto (dual-signature model)', () => {
     expect(result.status).toBe('expired');
     expect(result.message).toContain('Mandate expired');
   });
+
+  /**
+   * The canonical payment summary that Kotlin and Python both have to produce is
+   * fixed by contracts/canonical/vectors.json, and it carries flat keys:
+   * payee_name, payee_account, payee_ifsc, amount_paise. A verifier that only
+   * knew payee.name_at_bank / payee_account_last4 showed a valid mandate with an
+   * empty payee and an empty account, which is worse than refusing to show it.
+   */
+  it('reads the payee and account from a summary in the agreed canonical form', async () => {
+    const approverKey = await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify'],
+    );
+    const kmsKey = await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify'],
+    );
+    const approverSpkiB64 = bytesToBase64(
+      new Uint8Array(await crypto.subtle.exportKey('spki', approverKey.publicKey)),
+    );
+    const kmsSpkiB64 = bytesToBase64(
+      new Uint8Array(await crypto.subtle.exportKey('spki', kmsKey.publicKey)),
+    );
+
+    // Keys sorted, no whitespace, every value a string: vectors.json's genuine_payment.
+    const canonical =
+      '{"amount_paise":"98000000","currency":"INR","expires_at":"2099-12-31T23:59:59+05:30",' +
+      '"initiator":"human:clerk@acme.example","intent_id":"pi_01JD2XGENUINE0001",' +
+      '"mandate_id":"pm_01JD2XGENUINE0001","payee_account":"000123457781",' +
+      '"payee_ifsc":"ABCD0123456","payee_name":"Sri Lakshmi Castings",' +
+      '"payer_account":"50100004521","purpose":"INV-2219","v":"1"}';
+    const summaryBytes = new TextEncoder().encode(canonical);
+    const summarySha256 = await computeSha256Hex(summaryBytes);
+    const approverSigB64 = bytesToBase64(
+      new Uint8Array(
+        await crypto.subtle.sign(
+          { name: 'ECDSA', hash: { name: 'SHA-256' } },
+          approverKey.privateKey,
+          summaryBytes,
+        ),
+      ),
+    );
+
+    const mandateBytes = new TextEncoder().encode(
+      JSON.stringify({
+        summary_sha256: summarySha256,
+        decision: 'approve',
+        tier: 1,
+        policy_version: '2026.11.1',
+        device_id: 'dv_01JD2XCFOPHONE001',
+        device_public_key: approverSpkiB64,
+        key_security_level: 'StrongBox',
+        integrity_verdict: 'MEETS_STRONG_INTEGRITY',
+        approver_signature: approverSigB64,
+        signed_at: '2026-11-18T15:20:41+05:30',
+        expires_at: '2099-12-31T23:59:59Z',
+      }),
+    );
+    const kmsSigB64 = bytesToBase64(
+      new Uint8Array(
+        await crypto.subtle.sign(
+          { name: 'ECDSA', hash: { name: 'SHA-256' } },
+          kmsKey.privateKey,
+          mandateBytes,
+        ),
+      ),
+    );
+
+    const mandate: MandateInput = {
+      mandate_id: 'pm_01JD2XGENUINE0001',
+      summary_sha256: summarySha256,
+      summary_b64: bytesToBase64(summaryBytes),
+      mandate_b64: bytesToBase64(mandateBytes),
+      approval: { approver: 'cfo@acme.example', signature: approverSigB64 },
+      countersignature: {
+        kms_key_version: 'mandate-signer/1',
+        signature: kmsSigB64,
+        public_key: kmsSpkiB64,
+      },
+    };
+
+    const result = await verifyMandate(mandate);
+    expect(result.status).toBe('valid');
+    expect(result.details?.payeeName).toBe('Sri Lakshmi Castings');
+    // The signed bytes carry the full account; the screen may only show four,
+    // and maskAccount refuses anything that is not exactly four digits.
+    expect(result.details?.accountLast4).toBe('7781');
+    expect(result.details?.ifsc).toBe('ABCD0123456');
+    expect(result.details?.amountPaise).toBe('98000000');
+    // Never a dash where the signed bytes carried a value.
+    expect(result.details?.payeeName).not.toBe('—');
+  });
 });
