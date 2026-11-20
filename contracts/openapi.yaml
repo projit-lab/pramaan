@@ -1,7 +1,1718 @@
+# DRAFT, proposed by Shoaib, needs Prajit's approval.
+#
+# Drafted from "Pramaan Build Plan Prajit and Shoaib" (pages 8-10, 20-22) because
+# contracts/openapi.yaml was still empty and the web lane is blocked without it.
+#
+# Prajit owns every security field: nonce, signature, attestation, canonical
+# summary and mandate hashes. Where this draft carries them it only passes them
+# through as opaque strings; it does not define their construction or semantics.
+# Shoaib owns display fields.
+#
+# Two things in here are proposals that need an explicit yes or no:
+#   1. GET /mandates/{id} returns canonical_b64, the exact bytes that were
+#      countersigned, so the verifier page can hash them in the browser without a
+#      third canonicalisation implementation in TypeScript.
+#   2. GET /payouts exists so the public sandbox bank page can read payouts
+#      without signing in (Firestore rules require auth). See contracts/firestore.md.
 openapi: 3.1.0
 info:
   title: Pramaan API
-  version: 0.1.0
+  version: 0.1.0-draft
+  description: |
+    Pramaan holds a company's risky payments until the real approver signs that
+    exact payment on their own phone, with a key in the phone's secure hardware.
+
+    Conventions (from the build plan, page 6):
+      - Money is an integer number of paise, sent as a string. Rupees 46.5 lakh is "465000000".
+      - Time is ISO 8601 with the +05:30 offset.
+      - IDs are prefixed ULIDs: pi_ intent, ap_ approval, pm_ mandate, dv_ device,
+        vd_ vendor, ag_ agent request, po_ payout.
+      - Errors are problem details (RFC 9457).
+      - Account numbers are masked to the last four digits everywhere except the
+        canonical summary the approver signs.
+
+    Credentials: the console and the mock ERP send a Firebase ID token. The Android
+    app sends a Firebase ID token plus an App Check token in X-Firebase-AppCheck.
+    Payout and ERP connectors use a service account.
 servers:
   - url: /v1
-paths: {}
+    description: Relative to the deployed API base (VITE_API_BASE on the web side)
+security:
+  - firebaseIdToken: []
+tags:
+  - name: intents
+    description: Payment intents. M2.
+  - name: approvals
+    description: Approvals waiting on a phone. M1, M2, M4.
+  - name: devices
+    description: Approver phone enrolment. M1.
+  - name: mandates
+    description: Signed, countersigned mandates. M2.
+  - name: gate
+    description: The payment gate. M2.
+  - name: vendors
+    description: Vendor master. M2.
+  - name: policies
+    description: Thresholds and the approval matrix. M2 read.
+  - name: payouts
+    description: Sandbox bank payouts. M2.
+  - name: ask
+    description: Questions over the BigQuery ledger. M4.
+  - name: demo
+    description: Seeded demo scenarios. Dev and demo projects only, DEMO_MODE=true. M6.
+paths:
+  /intents:
+    post:
+      tags: [intents]
+      summary: Create a payment intent
+      description: |
+        Called by the mock ERP, the ADK agent and the demo panel. Runs the policy
+        rules and returns release, hold or block, with the tier and the reasons.
+        Lands in M2.
+      operationId: createIntent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntentCreate'
+            examples:
+              bossScam:
+                summary: Boss scam, Rupees 46,50,000 to a brand-new payee
+                value:
+                  payee_vendor_id: vd_global_trade
+                  amount_paise: "465000000"
+                  purpose: "Urgent vendor advance"
+                  instruction_channel: chat
+                  instruction_note: "MD asked for this urgently and confidentially, do not call"
+                  initiator:
+                    type: human
+                    id: "clerk@acme.example"
+              genuine:
+                summary: Genuine invoice INV-2219, Rupees 9,80,000
+                value:
+                  payee_vendor_id: vd_sri_lakshmi
+                  amount_paise: "98000000"
+                  purpose: "INV-2219"
+                  invoice_sha256: "9f1c2b7a4d6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607182"
+                  instruction_channel: portal
+                  initiator:
+                    type: human
+                    id: "clerk@acme.example"
+      responses:
+        '201':
+          description: Intent created and decided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentDecision'
+              examples:
+                held:
+                  summary: Held at Tier 2
+                  value:
+                    intent_id: pi_01JD2XBOSSSCAM0001
+                    decision: hold
+                    status: held
+                    tier: 2
+                    reasons:
+                      - code: new_payee
+                        text: "First payment to this payee."
+                        source: rule
+                      - code: amount_above_25_lakh
+                        text: "Amount is above Rupees 25,00,000."
+                        source: rule
+                      - code: pressure_language
+                        text: "The instruction uses pressure language."
+                        source: rule
+                      - code: instruction_by_chat
+                        text: "The instruction arrived by chat."
+                        source: rule
+                    policy_version: "2026.11.1"
+                    created_at: "2026-11-20T14:12:07+05:30"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /intents/{intentId}:
+    get:
+      tags: [intents]
+      summary: Status, timeline and mandate id for one payment
+      description: Called by the console and the mock ERP. Lands in M2.
+      operationId: getIntent
+      parameters:
+        - $ref: '#/components/parameters/IntentId'
+      responses:
+        '200':
+          description: The payment intent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentIntent'
+              example:
+                intent_id: pi_01JD2XBOSSSCAM0001
+                status: held
+                tier: 2
+                amount_paise: "465000000"
+                currency: INR
+                payer_account_last4: "4521"
+                payee:
+                  name_at_bank: "Global Trade Solutions"
+                  account_last4: "9032"
+                  ifsc: "WXYZ0004411"
+                  vendor_id: vd_global_trade
+                purpose: "Urgent vendor advance"
+                invoice_sha256: null
+                instruction_channel: chat
+                instruction_note: "MD asked for this urgently and confidentially, do not call"
+                initiator:
+                  type: human
+                  id: "clerk@acme.example"
+                reasons:
+                  - code: new_payee
+                    text: "First payment to this payee."
+                    source: rule
+                  - code: pressure_language
+                    text: "The instruction uses pressure language."
+                    source: rule
+                explanation:
+                  text: "This payment was held because it is the first one to this payee and the instruction arrived by chat using urgent, confidential wording."
+                  source: gemini
+                  model_version: "configured-at-deploy"
+                model_armor_finding: null
+                policy_version: "2026.11.1"
+                approvers:
+                  - "md@acme.example"
+                mandate_id: null
+                created_at: "2026-11-20T14:12:07+05:30"
+                updated_at: "2026-11-20T14:12:09+05:30"
+                expires_at: "2026-11-21T14:12:07+05:30"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /intents/{intentId}/steps:
+    get:
+      tags: [intents]
+      summary: The timeline of one payment
+      description: |
+        The same steps the console reads live from Firestore
+        (holds/{intentId}/steps). This REST view exists for anything that cannot
+        open a Firestore listener. Lands in M2.
+      operationId: listIntentSteps
+      parameters:
+        - $ref: '#/components/parameters/IntentId'
+      responses:
+        '200':
+          description: Steps, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [steps]
+                properties:
+                  steps:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Step'
+              example:
+                steps:
+                  - n: 1
+                    step: created
+                    at: "2026-11-20T14:12:07+05:30"
+                    detail: "Payment created in Acme ERP by clerk@acme.example"
+                  - n: 2
+                    step: scored
+                    at: "2026-11-20T14:12:08+05:30"
+                    detail: "Four rules matched. Tier 2."
+                  - n: 3
+                    step: held
+                    at: "2026-11-20T14:12:08+05:30"
+                    detail: "Held for a signed approval."
+                  - n: 4
+                    step: pushed
+                    at: "2026-11-20T14:12:09+05:30"
+                    detail: "Sent to the MD's phone."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /devices/enrol/challenge:
+    post:
+      tags: [devices]
+      summary: Issue a one-time nonce for key attestation
+      description: |
+        Called by the Android app. Prajit owns the nonce; this draft only carries
+        it as an opaque string. Lands in M1.
+      operationId: createEnrolChallenge
+      responses:
+        '201':
+          description: A nonce that expires in five minutes and works once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nonce, expires_at]
+                properties:
+                  nonce:
+                    type: string
+                    description: Opaque. Prajit owns its construction.
+                  expires_at:
+                    $ref: '#/components/schemas/Timestamp'
+              example:
+                nonce: "q7ZpL2nR8sT4vW6yX0zA1bC3dE5fG7hJ"
+                expires_at: "2026-11-20T14:17:07+05:30"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /devices/enrol:
+    post:
+      tags: [devices]
+      summary: Enrol an approver phone
+      description: |
+        Called by the Android app with the public key, the attestation certificate
+        chain and the App Check token. Every server-side check in the build plan's
+        "Spec for Prajit" section 2 runs here. Prajit owns this request body; no
+        web app ever calls it. Lands in M1.
+      operationId: enrolDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Owned by Prajit. Shape to be confirmed by him.
+              additionalProperties: true
+      responses:
+        '201':
+          description: The enrolled device as the console displays it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: A check failed, so the phone cannot be used
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: "https://pramaan.example/problems/attestation-failed"
+                title: "This phone cannot be used"
+                status: 422
+                detail: "The signing key is not held in secure hardware."
+  /devices:
+    get:
+      tags: [devices]
+      summary: List approver phones
+      description: Read by the console Devices page. Lands in M1.
+      operationId: listDevices
+      responses:
+        '200':
+          description: Enrolled phones
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+              example:
+                devices:
+                  - device_id: dv_01JD2XCFOPHONE001
+                    approver: "cfo@acme.example"
+                    phone_model: "Pixel 9 Pro"
+                    key_security_level: StrongBox
+                    patch_level: "2026-10-01"
+                    last_integrity_verdict: MEETS_STRONG_INTEGRITY
+                    revoked: false
+                    enrolled_at: "2026-11-18T10:04:00+05:30"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /devices/{deviceId}/revoke:
+    post:
+      tags: [devices]
+      summary: Revoke an approver phone
+      description: |
+        Stub. Lands in M5, which is product roadmap rather than buildathon work,
+        so the console's Revoke button stays disabled and says so on screen.
+      operationId: revokeDevice
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: The device, now revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /approvals:
+    get:
+      tags: [approvals]
+      summary: Approvals waiting for this approver
+      description: Called by the Android app. Lands in M2.
+      operationId: listApprovals
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, decided, expired]
+      responses:
+        '200':
+          description: Approvals, riskiest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvals]
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalSummary'
+              example:
+                approvals:
+                  - approval_id: ap_01JD2XBOSSSCAM0001
+                    intent_id: pi_01JD2XBOSSSCAM0001
+                    tier: 2
+                    amount_paise: "465000000"
+                    payee_name_at_bank: "Global Trade Solutions"
+                    payee_account_last4: "9032"
+                    status: pending
+                    expires_at: "2026-11-21T14:12:07+05:30"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /approvals/{approvalId}:
+    get:
+      tags: [approvals]
+      summary: One approval, with the canonical summary and the nonce
+      description: |
+        Called by the Android app and, for display only, by the console. The
+        canonical summary and the nonce are Prajit's; this draft carries them as
+        opaque strings. Lands in M1.
+      operationId: getApproval
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      responses:
+        '200':
+          description: The approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Approval'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /approvals/{approvalId}/decision:
+    post:
+      tags: [approvals]
+      summary: Approve, decline or report fraud, with the signature
+      description: |
+        Called by the Android app only. Prajit owns this request body. No web app
+        ever calls it, and the console has no Approve button by design. Lands in M1.
+      operationId: decideApproval
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Owned by Prajit. Carries the decision and the device signature.
+              additionalProperties: true
+      responses:
+        '200':
+          description: The decision was recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval_id:
+                    type: string
+                  decision:
+                    $ref: '#/components/schemas/Decision'
+                  mandate_id:
+                    type: [string, 'null']
+                  verified:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Expired, revoked, replayed or already decided
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: The signature could not be verified
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /approvals/{approvalId}/voice:
+    post:
+      tags: [approvals]
+      summary: Start and complete the Tier 2 spoken check
+      description: Stub. Prajit owns Gemini Live voice. Lands in M4.
+      operationId: approvalVoice
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Owned by Prajit.
+              additionalProperties: true
+      responses:
+        '200':
+          description: The spoken check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched:
+                    type: boolean
+                  attempts_remaining:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /gate/release:
+    post:
+      tags: [gate]
+      summary: Release a payment, only if its mandate matches
+      description: |
+        Called by the payout connector with a service account, never by a browser.
+        Prajit owns the gate check. Lands in M2.
+      operationId: gateRelease
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Owned by Prajit.
+              additionalProperties: true
+      responses:
+        '200':
+          description: Released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payout_id:
+                    type: string
+                  mandate_id:
+                    type: string
+                  released_at:
+                    $ref: '#/components/schemas/Timestamp'
+        '409':
+          description: The payment does not match its mandate, so it stays held
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: "https://pramaan.example/problems/mandate-mismatch"
+                title: "This payment does not match its approval"
+                status: 409
+                detail: "The payee account differs from the one that was signed. The payment stays held."
+  /mandates/{mandateId}:
+    get:
+      tags: [mandates]
+      summary: One signed mandate
+      description: |
+        Read by the console's mandate viewer and by the public verifier page.
+        No sign-in required, because an auditor or payee must be able to check a
+        mandate they were handed. Lands in M2.
+
+        PROPOSAL: canonical_b64 carries the exact bytes that were countersigned,
+        base64-encoded, so the browser can hash them with WebCrypto. Without it the
+        verifier page would need a third canonicalisation implementation in
+        TypeScript, which would drift from the Kotlin and Python ones.
+      operationId: getMandate
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MandateId'
+      responses:
+        '200':
+          description: The mandate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mandate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /keys/countersign:
+    get:
+      tags: [mandates]
+      summary: The KMS public key, so a browser can verify a countersignature
+      description: |
+        Read by the public verifier page. PEM-encoded P-256 public key. Lands in M2.
+      operationId: getCountersignKey
+      security: []
+      responses:
+        '200':
+          description: The public key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pem, algorithm, key_version]
+                properties:
+                  pem:
+                    type: string
+                    description: SubjectPublicKeyInfo, PEM-encoded
+                  algorithm:
+                    type: string
+                    const: EC_SIGN_P256_SHA256
+                  key_version:
+                    type: string
+              example:
+                pem: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----\n"
+                algorithm: EC_SIGN_P256_SHA256
+                key_version: "mandate-signer/3"
+        '503':
+          description: Cloud KMS could not be reached
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /vendors:
+    get:
+      tags: [vendors]
+      summary: The vendor master
+      description: Read by the console and the mock ERP. Lands in M2.
+      operationId: listVendors
+      responses:
+        '200':
+          description: Vendors
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [vendors]
+                properties:
+                  vendors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Vendor'
+              example:
+                vendors:
+                  - vendor_id: vd_sri_lakshmi
+                    legal_name: "Sri Lakshmi Castings"
+                    gstin: "33AABCS1429P1Z5"
+                    account_last4: "7781"
+                    ifsc: "ABCD0123456"
+                    bank_changed_at: null
+                    is_new_payee: false
+                    months_of_history: 24
+                  - vendor_id: vd_kaveri_steel
+                    legal_name: "Kaveri Steel Traders"
+                    gstin: "33AAFCK9921M1Z8"
+                    account_last4: "5540"
+                    ifsc: "EFGH0005540"
+                    bank_changed_at: null
+                    is_new_payee: false
+                    months_of_history: 18
+                  - vendor_id: vd_sri_laxmi
+                    legal_name: "Sri Laxmi Castings"
+                    gstin: null
+                    account_last4: "3309"
+                    ifsc: "IJKL0003309"
+                    bank_changed_at: "2026-11-17T10:00:00+05:30"
+                    is_new_payee: true
+                    months_of_history: 0
+                  - vendor_id: vd_global_trade
+                    legal_name: "Global Trade Solutions"
+                    gstin: null
+                    account_last4: "9032"
+                    ifsc: "WXYZ0004411"
+                    bank_changed_at: null
+                    is_new_payee: true
+                    months_of_history: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /vendors/{vendorId}/bank-change:
+    post:
+      tags: [vendors]
+      summary: Open a vendor bank-change case
+      description: Stub. Lands in M5, outside buildathon scope.
+      operationId: openBankChange
+      parameters:
+        - name: vendorId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: A case was opened
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /policies:
+    get:
+      tags: [policies]
+      summary: Thresholds and the approval matrix
+      description: Read-only in M2. The editor is M5, outside buildathon scope.
+      operationId: getPolicies
+      responses:
+        '200':
+          description: The published policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySet'
+              example:
+                version: "2026.11.1"
+                published_at: "2026-11-18T09:00:00+05:30"
+                tier_thresholds_paise:
+                  tier1: "50000000"
+                  tier2: "250000000"
+                  tier3: "10000000000"
+                working_hours_ist:
+                  start: "09:00"
+                  end: "19:00"
+                rules:
+                  - code: new_payee
+                    text: "First payment to this payee."
+                    enabled: true
+                  - code: bank_details_changed
+                    text: "The payee's bank details changed in the last 30 days."
+                    enabled: true
+                  - code: amount_above_5_lakh
+                    text: "Amount is above Rupees 5,00,000."
+                    enabled: true
+                  - code: outside_working_hours
+                    text: "Raised outside 9 am to 7 pm IST."
+                    enabled: true
+                  - code: raised_by_agent
+                    text: "Raised by an AI agent."
+                    enabled: true
+                  - code: instruction_by_chat
+                    text: "The instruction arrived by chat or email."
+                    enabled: true
+                approval_matrix:
+                  - up_to_paise: "250000000"
+                    approvers: ["cfo@acme.example"]
+                  - up_to_paise: null
+                    approvers: ["cfo@acme.example", "md@acme.example"]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [policies]
+      summary: Publish a new policy version
+      description: Stub. Lands in M5, outside buildathon scope.
+      operationId: putPolicies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicySet'
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicySet'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /payouts:
+    get:
+      tags: [payouts]
+      summary: Sandbox bank payouts
+      description: |
+        PROPOSAL, needs Prajit's yes or no. The sandbox bank page carries no
+        sign-in, but Firestore rules require authentication, so the page cannot
+        read payouts/{id} directly. Either this endpoint exists without auth, or
+        the bank page signs in silently as a clerk. This draft assumes the
+        endpoint. Lands in M2.
+      operationId: listPayouts
+      security: []
+      responses:
+        '200':
+          description: Payouts, newest first. Empty until a mandate releases one.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payouts]
+                properties:
+                  payouts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payout'
+              example:
+                payouts:
+                  - payout_id: po_01JD2XGENUINE0001
+                    mandate_id: pm_01JD2XGENUINE0001
+                    intent_id: pi_01JD2XGENUINE0001
+                    amount_paise: "98000000"
+                    currency: INR
+                    payee_name_at_bank: "Sri Lakshmi Castings"
+                    payee_account_last4: "7781"
+                    payee_ifsc: "ABCD0123456"
+                    status: paid
+                    created_at: "2026-11-20T14:20:11+05:30"
+        '503':
+          description: The sandbox bank could not be reached
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /sandbox/payouts:
+    post:
+      tags: [payouts]
+      summary: The sandbox payout provider
+      description: |
+        Shaped like a real payouts API, with a required idempotency key. Called by
+        the gate with a service account, never by a browser. Prajit owns it. Lands in M2.
+      operationId: createSandboxPayout
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: The payout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+  /ask:
+    post:
+      tags: [ask]
+      summary: Ask the ledger a question in plain language
+      description: |
+        Relays a question to the BigQuery data agent. Read by the console's Ask
+        panel. Lands in M4; "if time allows" for the buildathon.
+      operationId: ask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+            example:
+              question: "How many payments were held this week, and why?"
+      responses:
+        '200':
+          description: The answer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [answer, source]
+                properties:
+                  answer:
+                    type: string
+                  sql:
+                    type: [string, 'null']
+                    description: The query the agent ran, shown in a collapsible block
+                  chart:
+                    type: [object, 'null']
+                    additionalProperties: true
+                  source:
+                    type: string
+                    const: gemini
+                    description: Always label this answer as AI-written on screen
+                  model_version:
+                    type: [string, 'null']
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: The agent could not answer
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /agent-requests:
+    get:
+      tags: [intents]
+      summary: Requests raised by AI agents
+      description: |
+        Read by the mock ERP's agent run view and the console's payment detail.
+        The console reads the same data live from Firestore agentRequests/{id}.
+        Lands in M3.
+      operationId: listAgentRequests
+      responses:
+        '200':
+          description: Agent requests, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agent_requests]
+                properties:
+                  agent_requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /agent-requests/{agentRequestId}:
+    get:
+      tags: [intents]
+      summary: One agent request
+      operationId: getAgentRequest
+      parameters:
+        - name: agentRequestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The agent request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /agent/pay:
+    post:
+      tags: [intents]
+      summary: Hand an invoice to the payables agent
+      description: |
+        Behind the mock ERP's "Let the AI agent pay this" button. The agent reads
+        the invoice, looks up the vendor and asks for a mandate. It has no tool
+        that releases money. Prajit owns the agent. Lands in M3.
+      operationId: agentPay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_ref]
+              properties:
+                invoice_ref:
+                  type: string
+                vendor_id:
+                  type: string
+            example:
+              invoice_ref: "KAVERI-4471"
+              vendor_id: vd_kaveri_steel
+      responses:
+        '202':
+          description: The agent run started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agent_request_id]
+                properties:
+                  agent_request_id:
+                    type: string
+              example:
+                agent_request_id: ag_01JD2XPOISONED001
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /demo/{scenario}:
+    post:
+      tags: [demo]
+      summary: Run a seeded demo scenario
+      description: |
+        Exists only when DEMO_MODE=true, which is set in the dev and demo projects
+        and never in production. Each scenario seeds its own data and can run
+        twice safely. Lands in M6.
+      operationId: runDemoScenario
+      parameters:
+        - name: scenario
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [boss-scam, genuine-payment, tamper, poisoned-invoice, tier2-voice, reset]
+      responses:
+        '202':
+          description: The scenario started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scenario, status]
+                properties:
+                  scenario:
+                    type: string
+                  status:
+                    type: string
+                    enum: [running, done, failed]
+                  intent_id:
+                    type: [string, 'null']
+                  detail:
+                    type: [string, 'null']
+              example:
+                scenario: boss-scam
+                status: running
+                intent_id: pi_01JD2XBOSSSCAM0001
+                detail: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Demo mode is off in this project
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /healthz:
+    get:
+      tags: [demo]
+      summary: Health check
+      description: Used by the demo panel's live service status.
+      operationId: healthz
+      security: []
+      responses:
+        '200':
+          description: The service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                  version:
+                    type: string
+              example:
+                status: ok
+                version: "0.1.0"
+components:
+  securitySchemes:
+    firebaseIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: A Firebase Authentication ID token. Role comes from the custom claim `role`.
+  parameters:
+    IntentId:
+      name: intentId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^pi_[A-Za-z0-9]+$"
+    ApprovalId:
+      name: approvalId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^ap_[A-Za-z0-9]+$"
+    MandateId:
+      name: mandateId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^pm_[A-Za-z0-9]+$"
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^dv_[A-Za-z0-9]+$"
+  responses:
+    BadRequest:
+      description: The request was malformed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: No valid Firebase ID token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: "https://pramaan.example/problems/unauthorized"
+            title: "Please sign in"
+            status: 401
+            detail: "This request carried no valid ID token."
+    Forbidden:
+      description: Signed in, but without the role this needs
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: "https://pramaan.example/problems/forbidden"
+            title: "No access"
+            status: 403
+            detail: "This account does not have the finance role."
+    NotFound:
+      description: Not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: Valid JSON, but the values were rejected
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: Problem details, RFC 9457.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        errors:
+          type: array
+          description: Field-level errors, so a form can show them inline.
+          items:
+            type: object
+            required: [field, detail]
+            properties:
+              field:
+                type: string
+              detail:
+                type: string
+    Timestamp:
+      type: string
+      description: ISO 8601 with the +05:30 offset.
+      examples:
+        - "2026-11-20T14:12:07+05:30"
+    Paise:
+      type: string
+      description: An integer number of paise as a string. Rupees 46.5 lakh is "465000000".
+      pattern: "^[0-9]+$"
+      examples:
+        - "465000000"
+    Tier:
+      type: integer
+      description: 0 pass, 1 signed approval, 2 spoken confirmation, 3 two people and a call-back.
+      minimum: 0
+      maximum: 3
+    HoldStatus:
+      type: string
+      enum: [held, approved, declined, released, blocked, expired]
+    Decision:
+      type: string
+      enum: [approve, decline, report_fraud]
+    InstructionChannel:
+      type: string
+      description: How the instruction reached the person who keyed the payment.
+      enum: [portal, email, chat, phone, agent]
+    KeySecurityLevel:
+      type: string
+      enum: [StrongBox, TrustedEnvironment, Software]
+    ReasonSource:
+      type: string
+      description: |
+        Where this text came from. Rules decide; Gemini only explains. Anything
+        marked gemini must be labelled as AI-written on screen.
+      enum: [rule, gemini, model_armor]
+    Initiator:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          enum: [human, agent]
+        id:
+          type: string
+          description: A work email for a human, or the Agent Identity for an agent.
+    Reason:
+      type: object
+      required: [code, text, source]
+      properties:
+        code:
+          type: string
+        text:
+          type: string
+        source:
+          $ref: '#/components/schemas/ReasonSource'
+        changed_from:
+          type: [string, 'null']
+          description: For a changed value, what it was before. Shown in red.
+        changed_to:
+          type: [string, 'null']
+    Explanation:
+      type: object
+      description: |
+        Written by Gemini. Must be shown with the label "Explanation written by
+        Gemini; rules made the decision".
+      required: [text, source]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+          const: gemini
+        model_version:
+          type: [string, 'null']
+    ModelArmorFinding:
+      type: object
+      description: |
+        A Model Armor finding on something an agent or Gemini read. Findings raise
+        the tier; they never lower it.
+      required: [category, detail]
+      properties:
+        category:
+          type: string
+          enum: [prompt_injection, jailbreak, malicious_url, sensitive_data]
+        detail:
+          type: string
+        excerpt:
+          type: [string, 'null']
+          description: The offending text, for the console to show.
+        found_at:
+          $ref: '#/components/schemas/Timestamp'
+    Payee:
+      type: object
+      required: [name_at_bank, account_last4, ifsc]
+      properties:
+        name_at_bank:
+          type: string
+          description: The name as the bank returns it, where a bank exposes it.
+        account_last4:
+          type: string
+          pattern: "^[0-9]{4}$"
+        ifsc:
+          type: string
+        vendor_id:
+          type: [string, 'null']
+    IntentCreate:
+      type: object
+      required: [amount_paise, instruction_channel, initiator]
+      properties:
+        payee_vendor_id:
+          type: string
+          description: A vendor from the master. Either this or payee must be given.
+        payee:
+          $ref: '#/components/schemas/Payee'
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        currency:
+          type: string
+          const: INR
+          default: INR
+        purpose:
+          type: string
+          description: Usually the invoice number.
+        invoice_sha256:
+          type: [string, 'null']
+          pattern: "^[0-9a-f]{64}$"
+        instruction_channel:
+          $ref: '#/components/schemas/InstructionChannel'
+        instruction_note:
+          type: [string, 'null']
+          description: What the instruction said, in the clerk's words.
+        initiator:
+          $ref: '#/components/schemas/Initiator'
+    IntentDecision:
+      type: object
+      required: [intent_id, decision, status, tier, reasons, created_at]
+      properties:
+        intent_id:
+          type: string
+        decision:
+          type: string
+          enum: [release, hold, block]
+        status:
+          $ref: '#/components/schemas/HoldStatus'
+        tier:
+          $ref: '#/components/schemas/Tier'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+        policy_version:
+          type: string
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    PaymentIntent:
+      type: object
+      required: [intent_id, status, tier, amount_paise, currency, payee, instruction_channel, initiator, reasons, created_at]
+      properties:
+        intent_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/HoldStatus'
+        tier:
+          $ref: '#/components/schemas/Tier'
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        currency:
+          type: string
+          const: INR
+        payer_account_last4:
+          type: string
+        payee:
+          $ref: '#/components/schemas/Payee'
+        purpose:
+          type: [string, 'null']
+        invoice_sha256:
+          type: [string, 'null']
+        instruction_channel:
+          $ref: '#/components/schemas/InstructionChannel'
+        instruction_note:
+          type: [string, 'null']
+        initiator:
+          $ref: '#/components/schemas/Initiator'
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+        explanation:
+          oneOf:
+            - $ref: '#/components/schemas/Explanation'
+            - type: 'null'
+        model_armor_finding:
+          oneOf:
+            - $ref: '#/components/schemas/ModelArmorFinding'
+            - type: 'null'
+        invoice:
+          oneOf:
+            - $ref: '#/components/schemas/InvoiceExtraction'
+            - type: 'null'
+        policy_version:
+          type: [string, 'null']
+        approvers:
+          type: array
+          items:
+            type: string
+        mandate_id:
+          type: [string, 'null']
+        agent_request_id:
+          type: [string, 'null']
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        updated_at:
+          $ref: '#/components/schemas/Timestamp'
+        expires_at:
+          type: [string, 'null']
+    InvoiceExtraction:
+      type: object
+      description: |
+        Fields Gemini read out of the invoice, beside what the vendor master says,
+        so the console can highlight mismatches. Label as AI-written.
+      properties:
+        source:
+          type: string
+          const: gemini
+        model_version:
+          type: [string, 'null']
+        file_url:
+          type: [string, 'null']
+        fields:
+          type: object
+          additionalProperties:
+            type: object
+            required: [extracted]
+            properties:
+              extracted:
+                type: [string, 'null']
+              on_record:
+                type: [string, 'null']
+              mismatch:
+                type: boolean
+    Step:
+      type: object
+      description: One line of the payment timeline.
+      required: [n, step, at]
+      properties:
+        n:
+          type: integer
+        step:
+          type: string
+          enum: [created, scored, held, pushed, signed, verified, countersigned, released, blocked]
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        detail:
+          type: [string, 'null']
+    ApprovalSummary:
+      type: object
+      required: [approval_id, intent_id, tier, amount_paise, payee_name_at_bank, status]
+      properties:
+        approval_id:
+          type: string
+        intent_id:
+          type: string
+        tier:
+          $ref: '#/components/schemas/Tier'
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        payee_name_at_bank:
+          type: string
+        payee_account_last4:
+          type: string
+        status:
+          type: string
+          enum: [pending, decided, expired]
+        expires_at:
+          type: [string, 'null']
+    Approval:
+      type: object
+      description: |
+        canonical_summary and nonce are Prajit's, carried here as opaque strings.
+        The web lane only displays the fields below it.
+      required: [approval_id, intent_id, tier, amount_paise, payee, status]
+      properties:
+        approval_id:
+          type: string
+        intent_id:
+          type: string
+        tier:
+          $ref: '#/components/schemas/Tier'
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        amount_in_words:
+          type: [string, 'null']
+          description: Indian words, for example "forty-six lakh fifty thousand rupees".
+        payee:
+          $ref: '#/components/schemas/Payee'
+        payer_account_last4:
+          type: [string, 'null']
+        purpose:
+          type: [string, 'null']
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+        explanation:
+          oneOf:
+            - $ref: '#/components/schemas/Explanation'
+            - type: 'null'
+        canonical_summary:
+          type: string
+          description: Opaque to the web lane. Owned by Prajit.
+        nonce:
+          type: string
+          description: Opaque to the web lane. Owned by Prajit.
+        status:
+          type: string
+          enum: [pending, decided, expired]
+        decision:
+          oneOf:
+            - $ref: '#/components/schemas/Decision'
+            - type: 'null'
+        expires_at:
+          type: [string, 'null']
+    Mandate:
+      type: object
+      description: |
+        An AP2-style record. The security blocks (summary_sha256, approval
+        signature, attestation evidence, countersignature) are Prajit's; the web
+        lane displays and verifies them but does not define them.
+      required: [mandate_id, type, intent_id, summary_sha256, decision, tier, approval, countersignature, expires_at]
+      properties:
+        mandate_id:
+          type: string
+        type:
+          type: string
+          const: pramaan.payment_mandate.v1
+        intent_id:
+          type: string
+        summary_sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        canonical_b64:
+          type: string
+          description: |
+            PROPOSAL. The exact canonical mandate bytes that were countersigned,
+            base64-encoded, so the verifier page can hash them in the browser
+            instead of re-implementing canonicalisation in TypeScript.
+        decision:
+          $ref: '#/components/schemas/Decision'
+        tier:
+          $ref: '#/components/schemas/Tier'
+        policy_version:
+          type: [string, 'null']
+        payer:
+          type: object
+          properties:
+            company:
+              type: string
+            account_last4:
+              type: string
+        payee:
+          $ref: '#/components/schemas/Payee'
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        currency:
+          type: string
+          const: INR
+        purpose:
+          type: object
+          properties:
+            invoice:
+              type: [string, 'null']
+            invoice_sha256:
+              type: [string, 'null']
+        initiator:
+          $ref: '#/components/schemas/Initiator'
+        approval:
+          type: object
+          description: Owned by Prajit.
+          required: [approver, decision, signed_at, signature]
+          properties:
+            approver:
+              type: string
+            decision:
+              $ref: '#/components/schemas/Decision'
+            signed_at:
+              $ref: '#/components/schemas/Timestamp'
+            device_id:
+              type: [string, 'null']
+            key_security_level:
+              oneOf:
+                - $ref: '#/components/schemas/KeySecurityLevel'
+                - type: 'null'
+            patch_level:
+              type: [string, 'null']
+            device_integrity:
+              type: [string, 'null']
+              description: |
+                The Play Integrity verdict, only when the server really verified
+                one. Null means no verdict, and the screen must say so rather than
+                imply a passed check.
+            signature:
+              type: string
+              description: Base64. Owned by Prajit.
+        countersignature:
+          type: object
+          required: [kms_key_version, signature]
+          properties:
+            kms_key_version:
+              type: string
+            signature:
+              type: string
+              description: |
+                Base64 of the DER signature from Cloud KMS. WebCrypto needs raw
+                r||s (64 bytes), so the verifier page converts it first.
+            algorithm:
+              type: string
+              const: EC_SIGN_P256_SHA256
+        signed_at:
+          type: [string, 'null']
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        used_at:
+          type: [string, 'null']
+          description: A mandate releases one payment only.
+    Device:
+      type: object
+      required: [device_id, approver, key_security_level, revoked, enrolled_at]
+      properties:
+        device_id:
+          type: string
+        approver:
+          type: string
+        phone_model:
+          type: [string, 'null']
+        key_security_level:
+          $ref: '#/components/schemas/KeySecurityLevel'
+        patch_level:
+          type: [string, 'null']
+        last_integrity_verdict:
+          type: [string, 'null']
+          description: Null means no verdict was recorded. Never render null as a pass.
+        revoked:
+          type: boolean
+        enrolled_at:
+          $ref: '#/components/schemas/Timestamp'
+    Vendor:
+      type: object
+      required: [vendor_id, legal_name, account_last4, ifsc, is_new_payee]
+      properties:
+        vendor_id:
+          type: string
+        legal_name:
+          type: string
+        gstin:
+          type: [string, 'null']
+        account_last4:
+          type: string
+          pattern: "^[0-9]{4}$"
+        ifsc:
+          type: string
+        bank_changed_at:
+          type: [string, 'null']
+        is_new_payee:
+          type: boolean
+        months_of_history:
+          type: integer
+    AgentRequest:
+      type: object
+      required: [agent_request_id, agent_id, status]
+      properties:
+        agent_request_id:
+          type: string
+        agent_id:
+          type: string
+          description: The agent's Agent Identity.
+        invoice_ref:
+          type: [string, 'null']
+        intent_id:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [reading, mandate_requested, flagged, held, declined, failed]
+        model_armor_finding:
+          oneOf:
+            - $ref: '#/components/schemas/ModelArmorFinding'
+            - type: 'null'
+        log:
+          type: array
+          description: The agent's run log, for the live view in the mock ERP.
+          items:
+            type: object
+            required: [at, text]
+            properties:
+              at:
+                $ref: '#/components/schemas/Timestamp'
+              text:
+                type: string
+              source:
+                $ref: '#/components/schemas/ReasonSource'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    Payout:
+      type: object
+      required: [payout_id, mandate_id, amount_paise, payee_name_at_bank, status, created_at]
+      properties:
+        payout_id:
+          type: string
+        mandate_id:
+          type: string
+        intent_id:
+          type: [string, 'null']
+        amount_paise:
+          $ref: '#/components/schemas/Paise'
+        currency:
+          type: string
+          const: INR
+        payee_name_at_bank:
+          type: string
+        payee_account_last4:
+          type: string
+        payee_ifsc:
+          type: string
+        status:
+          type: string
+          enum: [queued, paid, failed]
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+    PolicySet:
+      type: object
+      required: [version, tier_thresholds_paise, rules]
+      properties:
+        version:
+          type: string
+        published_at:
+          type: [string, 'null']
+        tier_thresholds_paise:
+          type: object
+          properties:
+            tier1:
+              $ref: '#/components/schemas/Paise'
+            tier2:
+              $ref: '#/components/schemas/Paise'
+            tier3:
+              $ref: '#/components/schemas/Paise'
+        working_hours_ist:
+          type: object
+          properties:
+            start:
+              type: string
+            end:
+              type: string
+        rules:
+          type: array
+          items:
+            type: object
+            required: [code, text, enabled]
+            properties:
+              code:
+                type: string
+              text:
+                type: string
+              enabled:
+                type: boolean
+        approval_matrix:
+          type: array
+          items:
+            type: object
+            properties:
+              up_to_paise:
+                type: [string, 'null']
+              approvers:
+                type: array
+                items:
+                  type: string
