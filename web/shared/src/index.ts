@@ -63,6 +63,8 @@ export {
   type HoldStatus,
   type Initiator,
   type InstructionChannel,
+  type InvoiceExtraction,
+  type InvoiceField,
   type KeySecurityLevel,
   type ModelArmorCategory,
   type ModelArmorFinding,
