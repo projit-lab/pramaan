@@ -1,0 +1,37 @@
+{
+  "name": "pramaan-web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pramaan web lane: console, mock ERP with the sandbox bank, public mandate verifier, and the shared library they share.",
+  "workspaces": [
+    "shared",
+    "console",
+    "erp-mock",
+    "verify",
+    "tools"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "gen:api": "openapi-typescript ../contracts/openapi.yaml --output shared/src/api/schema.d.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "dev:console": "npm run dev --workspace @pramaan/console",
+    "dev:erp": "npm run dev --workspace @pramaan/erp-mock",
+    "dev:verify": "npm run dev --workspace @pramaan/verify",
+    "mock:api": "prism mock ../contracts/openapi.yaml --port 4010 --cors --dynamic=false",
+    "emulators": "firebase emulators:start --only auth,firestore --project pramaan-dev",
+    "seed": "node tools/seed-firestore.mjs",
+    "grant-role": "node tools/grant-role.mjs",
+    "rules:test": "npm run test --workspace @pramaan/tools"
+  },
+  "devDependencies": {
+    "@stoplight/prism-cli": "^5.16.0",
+    "firebase-tools": "^15.37.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

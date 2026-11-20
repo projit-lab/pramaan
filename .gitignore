@@ -57,3 +57,8 @@ Thumbs.db
 # Large media
 *.mp4
 *.mov
+
+# Generated API client. Produced from contracts/openapi.yaml by `npm run gen:api`
+# in web/, and again in Cloud Build, so the code can never drift from the
+# contract. Committing it would let drift pass review.
+web/shared/src/api/schema.d.ts
