@@ -1,14 +1,14 @@
 {
-  "_comment": "Shared file: needs Prajit's review. The project id below is the one the build plan names (pramaan-dev). Shoaib: replace it, and the three hosting site ids, with the real ones once the Firebase project and its hosting sites exist. Create the sites with: firebase hosting:sites:create <id>",
+  "_comment": "Shared file: needs Prajit's review. Project id taken from infra/bootstrap.ps1, which creates pramaan-dev-515306 in asia-south1. The three hosting sites must exist before a deploy: firebase hosting:sites:create <id>",
   "projects": {
-    "default": "pramaan-dev"
+    "default": "pramaan-dev-515306"
   },
   "targets": {
-    "pramaan-dev": {
+    "pramaan-dev-515306": {
       "hosting": {
-        "console": ["pramaan-dev-console"],
-        "erp": ["pramaan-dev-erp"],
-        "verify": ["pramaan-dev-verify"]
+        "console": ["pramaan-dev-515306-console"],
+        "erp": ["pramaan-dev-515306-erp"],
+        "verify": ["pramaan-dev-515306-verify"]
       }
     }
   }

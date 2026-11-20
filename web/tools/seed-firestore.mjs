@@ -11,7 +11,7 @@
  * Usage
  *   node tools/seed-firestore.mjs
  *   node tools/seed-firestore.mjs --clear          wipe the seeded collections first
- *   node tools/seed-firestore.mjs --project pramaan-dev
+ *   node tools/seed-firestore.mjs --project pramaan-dev-515306
  */
 
 import { readFile } from 'node:fs/promises';
@@ -67,13 +67,13 @@ if (args.help) {
 Seed the Firestore emulator from data/firestore-seed.json.
 
   --clear             delete the seeded collections before writing
-  --project <id>      project id (default: $GCLOUD_PROJECT or pramaan-dev)
+  --project <id>      project id (default: $GCLOUD_PROJECT or pramaan-dev-515306)
   --real              write to the real project instead of the emulator
 `);
   process.exit(0);
 }
 
-const projectId = args.project ?? process.env.GCLOUD_PROJECT ?? 'pramaan-dev';
+const projectId = args.project ?? process.env.GCLOUD_PROJECT ?? 'pramaan-dev-515306';
 
 if (!args.real) {
   process.env.FIRESTORE_EMULATOR_HOST ??= '127.0.0.1:8080';

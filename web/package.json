@@ -29,7 +29,7 @@
     "dev:erp": "npm run dev --workspace @pramaan/erp-mock",
     "dev:verify": "npm run dev --workspace @pramaan/verify",
     "mock:api": "prism mock ../contracts/openapi.yaml --port 4010 --cors --dynamic=false",
-    "emulators": "firebase emulators:start --only auth,firestore --project pramaan-dev",
+    "emulators": "firebase emulators:start --only auth,firestore --project pramaan-dev-515306",
     "seed": "node tools/seed-firestore.mjs",
     "grant-role": "node tools/grant-role.mjs",
     "rules:test": "npm run test --workspace @pramaan/tools"

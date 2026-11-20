@@ -94,7 +94,7 @@ export function readEnv(overrides: RawEnv = {}): PramaanEnv {
       // On emulators a placeholder key is enough: the Auth emulator does not check it.
       apiKey: text(raw, 'VITE_FIREBASE_API_KEY', useEmulators ? 'emulator-api-key' : ''),
       authDomain: text(raw, 'VITE_FIREBASE_AUTH_DOMAIN', useEmulators ? 'localhost' : ''),
-      projectId: text(raw, 'VITE_FIREBASE_PROJECT_ID', 'pramaan-dev'),
+      projectId: text(raw, 'VITE_FIREBASE_PROJECT_ID', 'pramaan-dev-515306'),
       storageBucket: text(raw, 'VITE_FIREBASE_STORAGE_BUCKET'),
       messagingSenderId: text(raw, 'VITE_FIREBASE_MESSAGING_SENDER_ID'),
       appId: text(raw, 'VITE_FIREBASE_APP_ID'),
