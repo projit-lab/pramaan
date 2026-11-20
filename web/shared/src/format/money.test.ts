@@ -5,6 +5,7 @@ import {
   comparePaise,
   formatMoney,
   groupIndian,
+  rupeesToPaise,
   splitPaise,
 } from './money';
 
@@ -113,6 +114,47 @@ describe('amountInWords', () => {
   it('spells a crore count above a thousand', () => {
     // Rupees 1,200 crore.
     expect(amountInWords('1200000000000')).toBe('one thousand two hundred crore rupees');
+  });
+});
+
+describe('rupeesToPaise', () => {
+  it('converts what a clerk actually types', () => {
+    expect(rupeesToPaise('980000')).toBe('98000000');
+    expect(rupeesToPaise('9,80,000')).toBe('98000000');
+    expect(rupeesToPaise('₹ 46,50,000')).toBe('465000000');
+    expect(rupeesToPaise(' 4650000 ')).toBe('465000000');
+  });
+
+  it('keeps paise exact, without going through a float', () => {
+    // 1234.35 * 100 is 123434.99999999999 in floating point.
+    expect(rupeesToPaise('1234.35')).toBe('123435');
+    expect(rupeesToPaise('0.01')).toBe('1');
+    expect(rupeesToPaise('9800.5')).toBe('980050');
+    expect(rupeesToPaise('.5')).toBe('50');
+  });
+
+  it('handles amounts far beyond a safe integer', () => {
+    expect(rupeesToPaise('1234567890123456.78')).toBe('123456789012345678');
+  });
+
+  it('strips leading zeros', () => {
+    expect(rupeesToPaise('000980000')).toBe('98000000');
+  });
+
+  it('rejects what a person should be told about', () => {
+    expect(() => rupeesToPaise('')).toThrow(/Enter an amount/);
+    expect(() => rupeesToPaise('   ')).toThrow(/Enter an amount/);
+    expect(() => rupeesToPaise('-500')).toThrow(/cannot be negative/);
+    expect(() => rupeesToPaise('abc')).toThrow(/digits only/);
+    expect(() => rupeesToPaise('12.3.4')).toThrow(/digits only/);
+    expect(() => rupeesToPaise('100.123')).toThrow(/two decimal places/);
+    expect(() => rupeesToPaise('0')).toThrow(/more than zero/);
+    expect(() => rupeesToPaise('0.00')).toThrow(/more than zero/);
+  });
+
+  it('round-trips with formatMoney', () => {
+    expect(formatMoney(rupeesToPaise('46,50,000'))).toBe('₹46,50,000');
+    expect(formatMoney(rupeesToPaise('9800.50'))).toBe('₹9,800.50');
   });
 });
 
