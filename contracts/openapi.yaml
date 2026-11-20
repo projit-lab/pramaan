@@ -642,7 +642,8 @@ paths:
                 type: pramaan.payment_mandate.v1
                 intent_id: pi_01JD2XGENUINE0001
                 summary_sha256: "514981b4f0b1e2f4e8f4e3121862dab34213e233a1d9743620ad8bfcc3d97e54"
-                canonical_b64: "eyJhbW91bnRfcGFpc2UiOiI5ODAwMDAwMCIsImN1cnJlbmN5IjoiSU5SIiwiZXhwaXJlc19hdCI6IjIwMjctMTEtMjFUMTE6NDI6MDcrMDU6MzAiLCJpbml0aWF0b3IiOiJodW1hbjpjbGVya0BhY21lLmV4YW1wbGUiLCJpbnRlbnRfaWQiOiJwaV8wMUpEMlhHRU5VSU5FMDAwMSIsImludm9pY2Vfc2hhMjU2IjoiOWYxYzJiN2E0ZDZlOGYwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTBhMWIyYzNkNGU1ZjYwNzE4MiIsIm1hbmRhdGVfaWQiOiJwbV8wMUpEMlhHRU5VSU5FMDAwMSIsInBheWVlX2FjY291bnQiOiIwMDAxMjM0NTc3ODEiLCJwYXllZV9pZnNjIjoiQUJDRDAxMjM0NTYiLCJwYXllZV9uYW1lIjoiU3JpIExha3NobWkgQ2FzdGluZ3MiLCJwYXllcl9hY2NvdW50IjoiNTAxMDAwMDQ1MjEiLCJwdXJwb3NlIjoiSU5WLTIyMTkiLCJ2IjoiMSJ9"
+                summary_b64: "eyJhbW91bnRfcGFpc2UiOiI5ODAwMDAwMCIsImN1cnJlbmN5IjoiSU5SIiwiZXhwaXJlc19hdCI6IjIwMjctMTEtMjFUMTE6NDI6MDcrMDU6MzAiLCJpbml0aWF0b3IiOiJodW1hbjpjbGVya0BhY21lLmV4YW1wbGUiLCJpbnRlbnRfaWQiOiJwaV8wMUpEMlhHRU5VSU5FMDAwMSIsImludm9pY2Vfc2hhMjU2IjoiOWYxYzJiN2E0ZDZlOGYwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTBhMWIyYzNkNGU1ZjYwNzE4MiIsIm1hbmRhdGVfaWQiOiJwbV8wMUpEMlhHRU5VSU5FMDAwMSIsInBheWVlX2FjY291bnQiOiIwMDAxMjM0NTc3ODEiLCJwYXllZV9pZnNjIjoiQUJDRDAxMjM0NTYiLCJwYXllZV9uYW1lIjoiU3JpIExha3NobWkgQ2FzdGluZ3MiLCJwYXllcl9hY2NvdW50IjoiNTAxMDAwMDQ1MjEiLCJwdXJwb3NlIjoiSU5WLTIyMTkiLCJ2IjoiMSJ9"
+                mandate_b64: "eyJkZWNpc2lvbiI6ImFwcHJvdmUiLCJkZXZpY2VfaWQiOiJkdl8wMUpEMlhDRk9QSE9ORTAwMSIsImRldmljZV9wdWJsaWNfa2V5IjoiTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFZXhhbXBsZURldmljZVNwa2lPd25lZEJ5UHJhaml0IiwiZXhwaXJlc19hdCI6IjIwMjctMTEtMjFUMTE6NDI6MDcrMDU6MzAiLCJpbnRlZ3JpdHlfdmVyZGljdCI6Ik1FRVRTX1NUUk9OR19JTlRFR1JJVFkiLCJrZXlfc2VjdXJpdHlfbGV2ZWwiOiJTdHJvbmdCb3giLCJwb2xpY3lfdmVyc2lvbiI6IjIwMjYuMTEuMSIsInNpZ25lZF9hdCI6IjIwMjYtMTEtMThUMTU6MjA6NDErMDU6MzAiLCJzdW1tYXJ5X3NoYTI1NiI6IjUxNDk4MWI0ZjBiMWUyZjRlOGY0ZTMxMjE4NjJkYWIzNDIxM2UyMzNhMWQ5NzQzNjIwYWQ4YmZjYzNkOTdlNTQiLCJ0aWVyIjoxfQ=="
                 decision: approve
                 tier: 1
                 policy_version: "2026.11.1"
@@ -672,7 +673,7 @@ paths:
                   device_integrity: MEETS_STRONG_INTEGRITY
                   signature: "MEUCIQDexampleApproverSignatureOwnedByPrajit"
                 countersignature:
-                  kms_key_version: "mandate-signer/dev-fixture"
+                  kms_key_version: "mandate-signer/1"
                   signature: "MEYCIQD9n1Up0QQaLlD30BlYyZwbit9eiedUXWJXDaoVsfxFBQIhAIxYUkHVXQLSqBM9zZG7pu162eUrZ35Wj4kdgfL0tijy"
                   algorithm: EC_SIGN_P256_SHA256
                 signed_at: "2026-11-18T15:20:43+05:30"
@@ -712,7 +713,7 @@ Glkdpw+Hb5zbgidy1w3GwnA36c5GetJb7YueOmvFWRypc+T4F4eidLGDmw==
 -----END PUBLIC KEY-----
 "
                 algorithm: EC_SIGN_P256_SHA256
-                key_version: "mandate-signer/dev-fixture"
+                key_version: "mandate-signer/1"
         '503':
           description: Cloud KMS could not be reached
           content:
