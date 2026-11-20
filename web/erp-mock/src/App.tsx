@@ -13,6 +13,7 @@ import { AppHeader, RoleGate, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { NewPayment } from './pages/NewPayment';
+import { PaymentStatus } from './pages/PaymentStatus';
 import { Payments } from './pages/Payments';
 import { SandboxBank } from './pages/SandboxBank';
 import { Vendors } from './pages/Vendors';
@@ -69,6 +70,14 @@ export function App(): ReactNode {
         element={
           <ClerkRoute>
             <Payments />
+          </ClerkRoute>
+        }
+      />
+      <Route
+        path="/payments/:intentId"
+        element={
+          <ClerkRoute>
+            <PaymentStatus />
           </ClerkRoute>
         }
       />
