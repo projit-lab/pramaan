@@ -43,7 +43,7 @@ describe('with nothing signed yet', () => {
 describe('with every check run', () => {
   it('shows where the key lives and what it means', () => {
     render(<AttestationCard approval={fullEvidence} />);
-    expect(screen.getByText('StrongBox')).toBeInTheDocument();
+    expect(screen.getByText('StrongBox hardware')).toBeInTheDocument();
     expect(screen.getByText(/separate tamper-resistant chip/)).toBeInTheDocument();
   });
 
