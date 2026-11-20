@@ -16,6 +16,7 @@ from app.errors import (
 from app.logging import setup_logging
 from app.routers import (
     approvals,
+    files,
     health,
     hierarchy,
     intents,
@@ -71,7 +72,7 @@ def create_app() -> FastAPI:
 
     # M2 (Danish): intents, approvals list, mandates, vendor master, policies.
     # M2+ (Danish): organisation tree, approver hierarchy, batches, standing mandates.
-    for module in (intents, approvals, mandates, master, hierarchy):
+    for module in (intents, approvals, mandates, master, hierarchy, files):
         app.include_router(module.router, prefix="/v1")
     if settings.ENV == "local":
         app.include_router(local_dev.router, prefix="/v1")

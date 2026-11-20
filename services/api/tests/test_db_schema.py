@@ -36,6 +36,9 @@ TABLES = {
     "standing_mandates",
     "standing_mandate_usage",
     "batches",
+    # The file door
+    "bank_files",
+    "bank_file_lines",
 }
 
 

@@ -497,6 +497,86 @@ paths:
                     type: integer
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /files/bank:
+    post:
+      tags: [files]
+      summary: Upload a bank payment file
+      description: |
+        The file door. Finance uploads the same CSV they would hand to their
+        bank; every line becomes an ordinary payment intent with
+        `entry_route: bank_file` and meets the same policy, approvers and gate
+        as a payment somebody typed.
+
+        The file is imported whole or not at all. If any line is malformed the
+        response is 422 naming the line, and no payment is created: a
+        half-imported payment file is worse than a rejected one, because nobody
+        can tell by looking which half went in.
+      operationId: uploadBankFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    CSV. The header row must name payee_name, account_last4,
+                    ifsc and amount_paise, in any order; purpose and vendor_id
+                    are optional. At most 500 payments and 1000 kB.
+                department_id:
+                  type: string
+                  pattern: "^org_[A-Za-z0-9_]+$"
+      responses:
+        '201':
+          description: Every line was read and became a payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankFile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: The file could not be read; nothing was created
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /files/bank/{fileId}:
+    get:
+      tags: [files]
+      summary: How far through a bank file is
+      description: |
+        A file is not finished while any of its lines is still waiting for an
+        approver, and `complete` says so plainly rather than showing a tick the
+        moment the upload succeeded. The counts are derived from the payments
+        every time, never cached.
+      operationId: getBankFile
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^bf_[A-Za-z0-9]+$"
+      responses:
+        '200':
+          description: The file and its lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BankFile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No such file
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /gate/release:
     post:
       tags: [gate]
@@ -1281,6 +1361,48 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    BankFile:
+      type: object
+      description: An uploaded bank payment file and the payments it became.
+      required: [file_id, filename, sha256, line_count, waiting_on_approval, settled, complete]
+      properties:
+        file_id:
+          type: string
+          pattern: "^bf_[A-Za-z0-9]+$"
+        filename:
+          type: string
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Of the exact bytes uploaded, so the file Pramaan read is the file that was sent.
+        uploaded_by:
+          type: string
+        line_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        waiting_on_approval:
+          type: integer
+          description: Lines still waiting for a person.
+        settled:
+          type: integer
+          description: Lines released, blocked, declined or expired.
+        complete:
+          type: boolean
+          description: False while any line is still waiting.
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              line_no:
+                type: integer
+              intent_id:
+                type: string
+                pattern: "^pi_[A-Za-z0-9]+$"
+              status:
+                type: string
     Problem:
       type: object
       description: Problem details, RFC 9457.
