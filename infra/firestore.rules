@@ -1,0 +1,82 @@
+rules_version = '2';
+
+// Pramaan live read model.
+//
+// One rule above all: no client writes, anywhere. Only the API writes, through
+// the Admin SDK, which bypasses these rules entirely.
+//
+// Roles come from the Firebase Auth custom claim `role`, granted by an admin with
+// web/tools/grant-role.mjs. A signed-in user with no role reads nothing and sees
+// the "No access" page.
+//
+// `finance` reads everything the console shows. `clerk` reads only what the mock
+// ERP needs: the status of a payment they raised, the agent run they started, and
+// the sandbox bank. See contracts/firestore.md; the clerk role widens the build
+// plan's finance-only rule and needs Prajit's approval.
+//
+// Owner: Shoaib (rules and their tests). Reviewer: Prajit (auth and data access).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() ? request.auth.token.get('role', '') : '';
+    }
+
+    function isFinance() {
+      return role() == 'finance';
+    }
+
+    function isClerk() {
+      return role() == 'clerk';
+    }
+
+    // Held, approved, declined, released, blocked and expired payments.
+    // Read by the console holds board and payment detail, and by the mock ERP's
+    // live payment status.
+    match /holds/{intentId} {
+      allow read: if isFinance() || isClerk();
+      allow create, update, delete: if false;
+
+      // The payment timeline.
+      match /steps/{stepId} {
+        allow read: if isFinance() || isClerk();
+        allow create, update, delete: if false;
+      }
+    }
+
+    // Approver phones. Console only: a clerk has no business seeing which phones
+    // can approve, and the mock ERP represents the customer's own system.
+    match /devices/{deviceId} {
+      allow read: if isFinance();
+      allow create, update, delete: if false;
+    }
+
+    // Requests raised by AI agents. The clerk sees the run they started.
+    match /agentRequests/{agentRequestId} {
+      allow read: if isFinance() || isClerk();
+      allow create, update, delete: if false;
+    }
+
+    // Sandbox bank payouts. A payout exists only because a mandate released it.
+    //
+    // Note: the public sandbox bank page carries no sign-in, so it cannot read
+    // this collection. It reads GET /payouts on the API instead. See the open
+    // decision in contracts/firestore.md.
+    match /payouts/{payoutId} {
+      allow read: if isFinance() || isClerk();
+      allow create, update, delete: if false;
+    }
+
+    // Everything else is closed. Firestore denies by default, so this is a
+    // statement of intent rather than an enforcement: a new collection is
+    // unreadable until someone adds a rule for it on purpose.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

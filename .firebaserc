@@ -1,0 +1,15 @@
+{
+  "_comment": "Shared file: needs Prajit's review. The project id below is the one the build plan names (pramaan-dev). Shoaib: replace it, and the three hosting site ids, with the real ones once the Firebase project and its hosting sites exist. Create the sites with: firebase hosting:sites:create <id>",
+  "projects": {
+    "default": "pramaan-dev"
+  },
+  "targets": {
+    "pramaan-dev": {
+      "hosting": {
+        "console": ["pramaan-dev-console"],
+        "erp": ["pramaan-dev-erp"],
+        "verify": ["pramaan-dev-verify"]
+      }
+    }
+  }
+}

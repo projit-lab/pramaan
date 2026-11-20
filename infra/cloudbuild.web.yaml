@@ -1,0 +1,167 @@
+# Cloud Build pipeline for the Pramaan web lane.
+#
+# Owner: Shoaib. Shared file, so Prajit reviews it.
+#
+# Deploys the three web apps (console, Acme ERP with the sandbox bank, and the
+# public mandate verifier) to Firebase Hosting, and the Firestore security rules
+# and indexes, on every merge to main.
+#
+# Contract-first, enforced here: the TypeScript client is generated from
+# contracts/openapi.yaml during the build rather than committed. If the contract
+# and the code have drifted, typecheck fails and nothing deploys. That is the
+# point: drift fails the build instead of the demo.
+#
+# ---------------------------------------------------------------------------
+# Creating the trigger (run once, from the repository root)
+#
+#   gcloud builds triggers create github \
+#     --name=pramaan-web-main \
+#     --region=asia-south1 \
+#     --repo-name=pramaan \
+#     --repo-owner=projit-lab \
+#     --branch-pattern='^main$' \
+#     --build-config=infra/cloudbuild.web.yaml \
+#     --included-files='web/**,contracts/openapi.yaml,infra/firestore.rules,infra/firestore.indexes.json,infra/cloudbuild.web.yaml' \
+#     --substitutions=_FIREBASE_PROJECT=pramaan-dev
+#
+# The GitHub repository must be connected to Cloud Build first, in the console
+# under Cloud Build, Triggers, Connect repository.
+#
+# ---------------------------------------------------------------------------
+# IAM the build service account needs
+#
+# The default service account is <PROJECT_NUMBER>@cloudbuild.gserviceaccount.com.
+# Grant it:
+#
+#   roles/firebasehosting.admin    deploy to Firebase Hosting
+#   roles/firebaserules.admin      deploy Firestore rules and indexes
+#   roles/datastore.indexAdmin     create the composite indexes the board needs
+#   roles/serviceusage.serviceUsageConsumer   call the Firebase APIs
+#   roles/logging.logWriter        write build logs
+#
+#   PROJECT_NUMBER=$(gcloud projects describe pramaan-dev --format='value(projectNumber)')
+#   for ROLE in roles/firebasehosting.admin roles/firebaserules.admin \
+#               roles/datastore.indexAdmin \
+#               roles/serviceusage.serviceUsageConsumer roles/logging.logWriter; do
+#     gcloud projects add-iam-policy-binding pramaan-dev \
+#       --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+#       --role="$ROLE"
+#   done
+#
+# ---------------------------------------------------------------------------
+# Firebase web config
+#
+# The six VITE_FIREBASE_* values are not secrets: they ship inside the browser
+# bundle. They are kept in Secret Manager anyway, as one secret holding a dotenv
+# file, so dev, demo and production can never be built with each other's config
+# by accident.
+#
+#   gcloud secrets create pramaan-web-env --replication-policy=automatic
+#   gcloud secrets versions add pramaan-web-env --data-file=web/.env.local
+#   gcloud secrets add-iam-policy-binding pramaan-web-env \
+#     --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+#     --role=roles/secretmanager.secretAccessor
+
+substitutions:
+  _FIREBASE_PROJECT: pramaan-dev
+  _NODE_IMAGE: node:22
+  # Set to "false" in the production project. Demo endpoints and the demo control
+  # panel exist only where this is true.
+  _DEMO_MODE: 'true'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/${_FIREBASE_PROJECT}/secrets/pramaan-web-env/versions/latest
+      env: WEB_ENV_FILE
+
+timeout: 1200s
+
+steps:
+  # 1. Dependencies, from the lock file so a build is reproducible.
+  - id: install
+    name: ${_NODE_IMAGE}
+    dir: web
+    entrypoint: npm
+    args: ['ci', '--no-audit', '--no-fund']
+
+  # 2. Generate the typed API client from the contract. Never committed, always
+  #    generated, so the code cannot drift from contracts/openapi.yaml.
+  - id: generate-client
+    name: ${_NODE_IMAGE}
+    dir: web
+    entrypoint: npm
+    args: ['run', 'gen:api']
+    waitFor: ['install']
+
+  # 3. Typecheck every workspace. This is the step that catches contract drift.
+  - id: typecheck
+    name: ${_NODE_IMAGE}
+    dir: web
+    entrypoint: npm
+    args: ['run', 'typecheck']
+    waitFor: ['generate-client']
+
+  # 4. Unit tests for the shared library and the apps.
+  #
+  #    The Firestore rules tests are deliberately NOT here: they need the
+  #    emulator, which needs Java, which this image does not have. They run
+  #    locally before a rules change is pushed, and belong in a separate trigger
+  #    on a Java-capable image. Noted rather than silently skipped.
+  - id: test
+    name: ${_NODE_IMAGE}
+    dir: web
+    entrypoint: npm
+    args: ['run', 'test', '--workspace', '@pramaan/shared']
+    waitFor: ['generate-client']
+
+  # 5. Build all three apps with the project's own Firebase config.
+  - id: build
+    name: ${_NODE_IMAGE}
+    dir: web
+    entrypoint: bash
+    secretEnv: ['WEB_ENV_FILE']
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        printf '%s\n' "$$WEB_ENV_FILE" > .env.production.local
+        # A deployed build never talks to an emulator.
+        echo "VITE_USE_EMULATORS=false" >> .env.production.local
+        echo "VITE_DEMO_MODE=${_DEMO_MODE}" >> .env.production.local
+        npm run build
+        rm -f .env.production.local
+    waitFor: ['typecheck', 'test']
+
+  # 6. Deploy the Firestore rules and indexes, then the three hosting targets.
+  #
+  #    Rules go first on purpose. If a rules change and a UI change land
+  #    together, the stricter rules must be live before the UI that assumes them.
+  - id: deploy
+    name: ${_NODE_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        npx --yes firebase-tools@15 deploy \
+          --project "${_FIREBASE_PROJECT}" \
+          --only firestore:rules,firestore:indexes \
+          --non-interactive
+        npx --yes firebase-tools@15 deploy \
+          --project "${_FIREBASE_PROJECT}" \
+          --only hosting:console,hosting:erp,hosting:verify \
+          --non-interactive \
+          --message "Cloud Build $BUILD_ID, commit $SHORT_SHA"
+    waitFor: ['build']
+
+artifacts:
+  objects:
+    location: gs://${_FIREBASE_PROJECT}-build-artifacts/web/${SHORT_SHA}
+    paths:
+      - web/console/dist/**
+      - web/erp-mock/dist/**
+      - web/verify/dist/**
