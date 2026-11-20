@@ -1,0 +1,59 @@
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+captures/
+.cxx/
+.externalNativeBuild/
+
+# Signing keys
+*.jks
+*.keystore
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+.firebase/
+*-debug.log
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Credentials
+service-account*.json
+*-credentials.json
+*.pem
+*.p12
+
+# Terraform
+.terraform/
+*.tfstate*
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Large media
+*.mp4
+*.mov
