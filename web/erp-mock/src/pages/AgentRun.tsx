@@ -74,7 +74,7 @@ export function AgentRun(): ReactNode {
   return (
     <div>
       <p style={{ marginTop: 0 }}>
-        <Link to="/">&larr; Payment run</Link>
+        <Link to="/" className="erp-back-link">&larr; Payment run</Link>
       </p>
 
       <h1>Payables agent</h1>

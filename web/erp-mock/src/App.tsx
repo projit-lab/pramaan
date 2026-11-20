@@ -44,16 +44,6 @@ function ErpShell({ children }: { children: ReactNode }): ReactNode {
         <button
           type="button"
           onClick={() => void signOut()}
-          style={{
-            background: 'none',
-            border: 0,
-            color: 'inherit',
-            textAlign: 'left',
-            padding: '4px 6px',
-            cursor: 'pointer',
-            font: 'inherit',
-            textDecoration: 'underline',
-          }}
         >
           Sign out
         </button>
