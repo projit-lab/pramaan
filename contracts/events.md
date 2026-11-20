@@ -1,110 +1,162 @@
 # Pramaan Events
 
-**DRAFT, proposed by Shoaib, needs Prajit's approval.**
+This document defines the canonical Pub/Sub event topics, message envelope, and event payloads for the Pramaan payment protection platform. All event payloads are published to Google Cloud Pub/Sub topics in `asia-south1` (Mumbai).
 
-Drafted from the build plan, pages 5 and 10, because this file was still an empty
-heading. Prajit owns the publishers and the subscribers; the web lane never
-publishes or consumes a Pub/Sub message. This draft exists so both lanes agree on
-what each step is called, because the same names appear as `step` values in
-`holds/{intentId}/steps` and therefore on screen in the payment timeline.
+Prajit owns the backend event publishers and subscribers; Shoaib owns the web frontend presentation, timeline rendering, and Firestore read projection. Both lanes agree on the topic names, envelope structure, event payloads, and lifecycle step names.
 
-## Topics
+---
 
-| Topic | Published when | Consumed by |
+## Canonical Pub/Sub Topics
+
+| Topic Name (GCP) | Event Type | Published When / Trigger | Producer(s) | Primary Consumer(s) |
+| :--- | :--- | :--- | :--- | :--- |
+| `intent-created` | `intent.created` | A payment intent is accepted requiring evaluation and potential hold | ERP Mock / API Gateway | Ledger Writer (BigQuery), Firestore Projector |
+| `intent-decided` | `intent.decided` | The policy engine and AI agent evaluate an intent and return release, hold, or block | Payables AI Agent | Pramaan API, Firestore Projector, Push Notifier (FCM) |
+| `approval-signed` | `approval.signed` | An approver cryptographically signs the payment approval on their hardware-backed mobile device | Approver Android App (via API) | Mandate Engine, Firestore Projector, Ledger Writer |
+| `mandate-issued` | `mandate.issued` | A cryptographically verified payment mandate is generated and signed with the Cloud KMS HSM key | Pramaan API (HSM Signer) | Payment Release Worker, Firestore Projector, Ledger Writer |
+| `payment-released` | `payment.released` | Payment release execution is confirmed by the banking gateway / payout rail | Payment Executor Worker | ERP Mock, Firestore Projector, Ledger Writer |
+| `payment-blocked` | `payment.blocked` | Payment is blocked due to policy rejection, approver denial, or anomaly detection | Risk Agent / Pramaan API | ERP Mock, Firestore Projector, Push Notifier, Auditor |
+| `device-enrolled` | `device.enrolled` | An authorized approver registers/attests a new mobile device with hardware-backed Keystore/StrongBox | Device Onboarding Service | Auth & Key Registry, Firestore Projector, Ledger Writer |
+
+Three primary consumers process these topics:
+- **Ledger Writer**: Appends every event to BigQuery (`pramaan_ledger`) with the previous row's SHA-256 hash, forming an append-only cryptographic hash chain.
+- **Firestore Projector**: Projects event state transitions into live `holds` documents for the web console and approver app.
+- **Push Notifier**: Dispatches Firebase Cloud Messaging (FCM) high-priority data messages to approver phones.
+
+---
+
+## Message Envelope
+
+Every message carries a uniform envelope so the ledger writer, firestore projector, and notification engine can parse records consistently.
+
+| Field | Type | Description / Notes |
 | :--- | :--- | :--- |
-| `intent.created` | a payment intent is accepted | ledger writer, Firestore projector |
-| `intent.decided` | the policy engine returns release, hold or block | ledger writer, Firestore projector, push notifier |
-| `approval.signed` | a device signature is verified | ledger writer, Firestore projector |
-| `mandate.issued` | the mandate is countersigned with Cloud KMS | ledger writer, Firestore projector |
-| `payment.released` | the gate released the payment to the payout rail | ledger writer, Firestore projector |
-| `payment.blocked` | declined, reported as fraud, or refused by the gate | ledger writer, Firestore projector, push notifier |
-| `device.enrolled` | an approver phone passed every enrolment check | ledger writer, Firestore projector |
+| `event_id` | string | Unique ULID per message, ensuring idempotent consumer processing. |
+| `event_type` | string | Canonical event type name (e.g., `intent.created` or `intent-created`). |
+| `occurred_at` | string | ISO 8601 with `+05:30` offset (IST) in the message payload; stored as UTC in BigQuery. |
+| `company_id` | string | Identifier of the tenant company. |
+| `intent_id` | string \| null | Associated payment intent ID (`pi_...`); `null` on `device.enrolled`. |
+| `actor` | object | `{ type: "human" \| "agent" \| "service", id: string }` |
+| `data` | object | Per-event payload schema described below. |
 
-Three subscribers consume them: the **ledger writer** (appends to BigQuery with the
-previous row's hash, so the ledger is a hash chain), the **Firestore projector**
-(writes the `holds` documents the web lane reads) and the **push notifier**
-(Firebase Cloud Messaging data messages to approver phones).
+---
 
-## Envelope
+## Schema & Security Rules
 
-Every message carries the same envelope, so the ledger writer and the projector can
-be written once.
+1. **Financial Amounts**: Always represented as an integer number of paise sent as a string (e.g., `"100000"` for ₹1,000.00; `"465000000"` for ₹46.5 lakh).
+2. **Account Masking**: Account numbers in event payloads are masked to the last four digits (`payee_account_last4`, `payer_account_last4`). Full account numbers, private keys, device secrets, and tokens never appear in events.
+3. **Timestamps**: All event timestamps in the API follow ISO 8601 with the `+05:30` offset (IST).
+4. **Mandate Immutability**: `mandate.issued` events reference an immutable cryptographic signature generated by the Cloud KMS HSM key `mandate-signer` (`EC_SIGN_P256_SHA256`).
+5. **Model Attribution**: Any reasoning or payload authored by an LLM carries `source: "gemini"` and a `model_version`, plus a SHA-256 hash of the input prompt, recording full AI provenance on the ledger.
 
-| Field | Type | Notes |
-| :--- | :--- | :--- |
-| `event_id` | string | unique per message, for idempotent consumers |
-| `event_type` | string | one of the topics above |
-| `occurred_at` | string | ISO 8601 with `+05:30` in the message; UTC in BigQuery |
-| `company_id` | string | |
-| `intent_id` | string or null | null on `device.enrolled` |
-| `actor` | object | `{ type: "human" \| "agent" \| "service", id }` |
-| `data` | object | the per-event payload below |
+---
 
-Rules that hold for every payload:
+## Event Payloads
 
-- Money is an integer number of paise as a string.
-- Account numbers are masked to the last four digits. Full account numbers, device
-  signatures and tokens never appear in an event.
-- Anything a model wrote carries `source: "gemini"` and a `model_version`, plus a
-  hash of the prompt, so the ledger records which model said what.
+### `intent.created`
+```json
+{
+  "amount_paise": "465000000",
+  "currency": "INR",
+  "payee_name": "Global Trade Solutions",
+  "payee_account_last4": "9032",
+  "payee_ifsc": "WXYZ0004411",
+  "payer_account_last4": "4521",
+  "purpose": "Urgent vendor advance",
+  "invoice_sha256": null,
+  "instruction_channel": "chat",
+  "initiator": { "type": "human", "id": "clerk@acme.example" }
+}
+```
 
-## Payloads
+### `intent.decided`
+```json
+{
+  "decision": "hold",
+  "status": "held",
+  "tier": 2,
+  "policy_version": "2026.11.1",
+  "reasons": [
+    { "code": "new_payee", "source": "rule" },
+    { "code": "pressure_language", "source": "rule" }
+  ],
+  "model_armor_finding": null,
+  "approvers": ["md@acme.example"]
+}
+```
 
-`intent.created`
+### `approval.signed`
+```json
+{
+  "approval_id": "ap_01JD2X...",
+  "approver": "md@acme.example",
+  "decision": "approve",
+  "device_id": "dv_01JD2X...",
+  "key_security_level": "StrongBox",
+  "patch_level": "2026-10-01",
+  "device_integrity": "MEETS_STRONG_INTEGRITY",
+  "summary_sha256": "9f1c...",
+  "verified": true
+}
+```
 
-    { "amount_paise": "465000000", "currency": "INR",
-      "payee_name": "Global Trade Solutions", "payee_account_last4": "9032",
-      "payee_ifsc": "WXYZ0004411", "payer_account_last4": "4521",
-      "purpose": "Urgent vendor advance", "invoice_sha256": null,
-      "instruction_channel": "chat", "initiator": { "type": "human", "id": "clerk@acme.example" } }
+### `mandate.issued`
+```json
+{
+  "mandate_id": "pm_01JD2X...",
+  "summary_sha256": "9f1c...",
+  "kms_key_version": "mandate-signer/1",
+  "tier": 1,
+  "expires_at": "2026-11-21T11:42:07+05:30"
+}
+```
 
-`intent.decided`
+### `payment.released`
+```json
+{
+  "mandate_id": "pm_01JD2X...",
+  "payout_id": "po_01JD2X...",
+  "amount_paise": "98000000",
+  "rail": "sandbox"
+}
+```
 
-    { "decision": "hold", "status": "held", "tier": 2, "policy_version": "2026.11.1",
-      "reasons": [ { "code": "new_payee", "source": "rule" },
-                   { "code": "pressure_language", "source": "rule" } ],
-      "model_armor_finding": null, "approvers": ["md@acme.example"] }
+### `payment.blocked`
+```json
+{
+  "reason": "declined_by_approver",
+  "detail": "The MD declined and reported it as fraud.",
+  "mandate_id": null,
+  "blocked_at_step": "signed"
+}
+```
 
-`approval.signed`
+*Proposed `reason` codes*: `declined_by_approver`, `reported_fraud`, `mandate_mismatch`, `mandate_expired`, `mandate_already_used`, `signature_invalid`, `approval_expired`. The console renders each as human-readable plain text and never displays the word "fraud" unless the approver specifically chose "Report fraud".
 
-    { "approval_id": "ap_01JD2X...", "approver": "md@acme.example",
-      "decision": "approve", "device_id": "dv_01JD2X...",
-      "key_security_level": "StrongBox", "patch_level": "2026-10-01",
-      "device_integrity": "MEETS_STRONG_INTEGRITY",
-      "summary_sha256": "9f1c...", "verified": true }
+### `device.enrolled`
+```json
+{
+  "device_id": "dv_01JD2X...",
+  "approver": "cfo@acme.example",
+  "phone_model": "Pixel 9 Pro",
+  "key_security_level": "StrongBox",
+  "patch_level": "2026-10-01",
+  "attestation_root": "ecdsa_p384"
+}
+```
 
-`mandate.issued`
+---
 
-    { "mandate_id": "pm_01JD2X...", "summary_sha256": "9f1c...",
-      "kms_key_version": "mandate-signer/3", "tier": 1,
-      "expires_at": "2026-11-21T11:42:07+05:30" }
+## Step Names & Payment Timeline Mapping
 
-`payment.released`
+The `step` values stored in `holds/{intentId}/steps` are:
+`created`, `scored`, `held`, `pushed`, `signed`, `verified`, `countersigned`, `released`, `blocked`.
 
-    { "mandate_id": "pm_01JD2X...", "payout_id": "po_01JD2X...",
-      "amount_paise": "98000000", "rail": "sandbox" }
-
-`payment.blocked`
-
-    { "reason": "declined_by_approver", "detail": "The MD declined and reported it as fraud.",
-      "mandate_id": null, "blocked_at_step": "signed" }
-
-Proposed `reason` values: `declined_by_approver`, `reported_fraud`,
-`mandate_mismatch`, `mandate_expired`, `mandate_already_used`,
-`signature_invalid`, `approval_expired`. The console renders each as plain text and
-never as the word "fraud" unless the approver chose "Report fraud".
-
-`device.enrolled`
-
-    { "device_id": "dv_01JD2X...", "approver": "cfo@acme.example",
-      "phone_model": "Pixel 9 Pro", "key_security_level": "StrongBox",
-      "patch_level": "2026-10-01", "attestation_root": "ecdsa_p384" }
-
-## Step names must match
-
-The `step` values in `holds/{intentId}/steps` are `created`, `scored`, `held`,
-`pushed`, `signed`, `verified`, `countersigned`, `released`, `blocked`. They are not
-one-to-one with topics: `scored` and `held` both come out of `intent.decided`,
-`signed` and `verified` both out of `approval.signed`, and `pushed` is written by
-the push notifier rather than by an event of its own. If Prajit changes a step name,
-the payment timeline changes with it, so it belongs in this contract.
+These lifecycle steps correspond to events as follows:
+- `created`: Originates from `intent.created`.
+- `scored` and `held`: Derived from `intent.decided`.
+- `pushed`: Recorded by the push notification service when FCM message dispatch succeeds.
+- `signed` and `verified`: Emitted upon `approval.signed` and server-side signature validation.
+- `countersigned`: Emitted when Cloud KMS signs the mandate (`mandate.issued`).
+- `released`: Final release confirmation (`payment.released`).
+- `blocked`: Terminal rejection or security refusal (`payment.blocked`).
