@@ -54,6 +54,8 @@ export {
   type AgentLogLine,
   type AgentRequest,
   type AgentRequestStatus,
+  type ApprovalEvidence,
+  type Decision,
   type Device,
   type Explanation,
   type FirestoreTime,
