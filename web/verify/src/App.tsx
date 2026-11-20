@@ -27,9 +27,21 @@ import { type ReactNode, useState } from 'react';
 
 type Mode = 'id' | 'json';
 
+/**
+ * The console links here as /?mandate=pm_... so an auditor lands with the id
+ * already filled in. Read once, at first render.
+ */
+function mandateFromQuery(): string {
+  try {
+    return new URLSearchParams(window.location.search).get('mandate')?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export function App(): ReactNode {
   const [mode, setMode] = useState<Mode>('id');
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(mandateFromQuery);
 
   const trimmed = value.trim();
   const canVerify = trimmed.length > 0;
