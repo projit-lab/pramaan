@@ -22,7 +22,7 @@
 #     --branch-pattern='^main$' \
 #     --build-config=infra/cloudbuild.web.yaml \
 #     --included-files='web/**,contracts/openapi.yaml,infra/firestore.rules,infra/firestore.indexes.json,infra/cloudbuild.web.yaml' \
-#     --substitutions=_FIREBASE_PROJECT=pramaan-dev
+#     --substitutions=_FIREBASE_PROJECT=pramaan-dev-515306
 #
 # The GitHub repository must be connected to Cloud Build first, in the console
 # under Cloud Build, Triggers, Connect repository.
@@ -39,11 +39,11 @@
 #   roles/serviceusage.serviceUsageConsumer   call the Firebase APIs
 #   roles/logging.logWriter        write build logs
 #
-#   PROJECT_NUMBER=$(gcloud projects describe pramaan-dev --format='value(projectNumber)')
+#   PROJECT_NUMBER=$(gcloud projects describe pramaan-dev-515306 --format='value(projectNumber)')
 #   for ROLE in roles/firebasehosting.admin roles/firebaserules.admin \
 #               roles/datastore.indexAdmin \
 #               roles/serviceusage.serviceUsageConsumer roles/logging.logWriter; do
-#     gcloud projects add-iam-policy-binding pramaan-dev \
+#     gcloud projects add-iam-policy-binding pramaan-dev-515306 \
 #       --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
 #       --role="$ROLE"
 #   done
@@ -63,7 +63,7 @@
 #     --role=roles/secretmanager.secretAccessor
 
 substitutions:
-  _FIREBASE_PROJECT: pramaan-dev
+  _FIREBASE_PROJECT: pramaan-dev-515306
   _NODE_IMAGE: node:22
   # Set to "false" in the production project. Demo endpoints and the demo control
   # panel exist only where this is true.
