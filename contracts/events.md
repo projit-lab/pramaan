@@ -65,6 +65,7 @@ Every message carries a uniform envelope so the ledger writer, firestore project
   "purpose": "Urgent vendor advance",
   "invoice_sha256": null,
   "instruction_channel": "chat",
+  "entry_route": "erp",
   "initiator": { "type": "human", "id": "clerk@acme.example" }
 }
 ```

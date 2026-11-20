@@ -14,7 +14,16 @@ from app.errors import (
     validation_exception_handler,
 )
 from app.logging import setup_logging
-from app.routers import health, keys
+from app.routers import (
+    approvals,
+    health,
+    hierarchy,
+    intents,
+    keys,
+    local_dev,
+    mandates,
+    master,
+)
 
 
 @asynccontextmanager
@@ -59,6 +68,13 @@ def create_app() -> FastAPI:
     app.include_router(health.router)  # /health and /healthz
     app.include_router(keys.router, prefix="/v1")
     app.include_router(keys.router)  # /keys/countersign
+
+    # M2 (Danish): intents, approvals list, mandates, vendor master, policies.
+    # M2+ (Danish): organisation tree, approver hierarchy, batches, standing mandates.
+    for module in (intents, approvals, mandates, master, hierarchy):
+        app.include_router(module.router, prefix="/v1")
+    if settings.ENV == "local":
+        app.include_router(local_dev.router, prefix="/v1")
 
     return app
 

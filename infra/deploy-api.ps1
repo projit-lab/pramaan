@@ -5,8 +5,14 @@
 # Region  : asia-south1 (Mumbai)
 #
 # Idempotent build via Cloud Build and deployment to Cloud Run.
-# Configures service account, environment variables, instance limits,
-# and grants roles/run.invoker to pramaan-agent.
+# Runs the database migrations as a Cloud Run job (api-migrate) with the same
+# image before deploying, configures service account, environment variables,
+# the DATABASE_URL secret and instance limits, and grants roles/run.invoker to
+# pramaan-agent.
+#
+# Needs: Secret Manager secret $DatabaseUrlSecret, readable by pramaan-api
+# (roles/secretmanager.secretAccessor), and network access from Cloud Run to
+# AlloyDB (a Serverless VPC Access connector or Direct VPC egress).
 # ==============================================================================
 
 [CmdletBinding()]
@@ -15,7 +21,10 @@ param (
     [string]$Region = "asia-south1",
     [string]$ServiceName = "api",
     [string]$RepoName = "pramaan",
-    [string]$Env = "dev"
+    [string]$Env = "dev",
+    # Secret Manager secret holding the AlloyDB connection string,
+    # e.g. postgresql+psycopg://pramaan:<password>@<host>:5432/pramaan
+    [string]$DatabaseUrlSecret = "pramaan-database-url"
 )
 
 # Ensure Google Cloud SDK is in PATH
@@ -54,20 +63,47 @@ $imageTag = "${Region}-docker.pkg.dev/${Project}/${RepoName}/${ServiceName}:late
 $kmsKey = "projects/${Project}/locations/${Region}/keyRings/pramaan/cryptoKeys/mandate-signer"
 
 # 1. Build container image with Cloud Build
-Write-Host "`n[1/4] Building container image via Cloud Build: $imageTag..." -ForegroundColor Yellow
+Write-Host "`n[1/5] Building container image via Cloud Build: $imageTag..." -ForegroundColor Yellow
 $rootDir = (Get-Item $PSScriptRoot).Parent.FullName
 $apiDir = Join-Path $rootDir "services\api"
 Invoke-Cli "gcloud builds submit `"$apiDir`" --tag `"$imageTag`" --project $Project" | Out-Null
 Write-Host "  [OK] Container image built and pushed to Artifact Registry." -ForegroundColor Green
 
-# 2. Deploy Cloud Run service
-Write-Host "`n[2/4] Deploying Cloud Run service '$ServiceName' in $Region..." -ForegroundColor Yellow
+$envVars = "ENV=$Env,GCP_PROJECT=$Project,REGION=$Region,KMS_KEY=$kmsKey"
+$secrets = "DATABASE_URL=${DatabaseUrlSecret}:latest"
+
+# 2. Migrate the database with the same image, before any new code serves traffic
+$jobName = "$ServiceName-migrate"
+Write-Host "`n[2/5] Running database migrations (Cloud Run job '$jobName': alembic upgrade head)..." -ForegroundColor Yellow
+$jobArgs = "--image `"$imageTag`" " +
+    "--region $Region " +
+    "--project $Project " +
+    "--service-account `"$serviceAccount`" " +
+    "--set-env-vars ""$envVars"" " +
+    "--set-secrets ""$secrets"" " +
+    "--command alembic " +
+    "--args upgrade,head " +
+    "--max-retries 0 " +
+    "--task-timeout 600"
+$jobExists = Invoke-Cli "gcloud run jobs describe $jobName --region $Region --project $Project --format=""value(name)""" -IgnoreError
+if ($jobExists.Success -and $jobExists.Output) {
+    Invoke-Cli "gcloud run jobs update $jobName $jobArgs" | Out-Null
+} else {
+    Invoke-Cli "gcloud run jobs create $jobName $jobArgs" | Out-Null
+}
+# --wait returns non-zero if the migration fails, which stops the deploy here.
+Invoke-Cli "gcloud run jobs execute $jobName --region $Region --project $Project --wait" | Out-Null
+Write-Host "  [OK] Database schema is at the latest migration." -ForegroundColor Green
+
+# 3. Deploy Cloud Run service
+Write-Host "`n[3/5] Deploying Cloud Run service '$ServiceName' in $Region..." -ForegroundColor Yellow
 $deployCmd = "gcloud run deploy $ServiceName " +
     "--image `"$imageTag`" " +
     "--region $Region " +
     "--project $Project " +
     "--service-account `"$serviceAccount`" " +
-    "--set-env-vars ""ENV=$Env,GCP_PROJECT=$Project,REGION=$Region,KMS_KEY=$kmsKey"" " +
+    "--set-env-vars ""$envVars"" " +
+    "--set-secrets ""$secrets"" " +
     "--min-instances 0 " +
     "--max-instances 3 " +
     "--allow-unauthenticated"
@@ -75,8 +111,8 @@ $deployCmd = "gcloud run deploy $ServiceName " +
 Invoke-Cli $deployCmd | Out-Null
 Write-Host "  [OK] Cloud Run service '$ServiceName' deployed." -ForegroundColor Green
 
-# 3. Grant pramaan-agent roles/run.invoker
-Write-Host "`n[3/4] Granting roles/run.invoker to $agentServiceAccount on '$ServiceName'..." -ForegroundColor Yellow
+# 4. Grant pramaan-agent roles/run.invoker
+Write-Host "`n[4/5] Granting roles/run.invoker to $agentServiceAccount on '$ServiceName'..." -ForegroundColor Yellow
 $iamCmd = "gcloud run services add-iam-policy-binding $ServiceName " +
     "--region $Region " +
     "--project $Project " +
@@ -86,8 +122,8 @@ $iamCmd = "gcloud run services add-iam-policy-binding $ServiceName " +
 Invoke-Cli $iamCmd | Out-Null
 Write-Host "  [OK] IAM invoker role bound for pramaan-agent." -ForegroundColor Green
 
-# 4. Verification
-Write-Host "`n[4/4] Verifying deployed service health endpoint..." -ForegroundColor Yellow
+# 5. Verification
+Write-Host "`n[5/5] Verifying deployed service health endpoint..." -ForegroundColor Yellow
 $urlRes = Invoke-Cli "gcloud run services describe $ServiceName --region $Region --project $Project --format=""value(status.url)"""
 $serviceUrl = $urlRes.Output
 

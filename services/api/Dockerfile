@@ -12,8 +12,11 @@ COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-# Copy application source code
+# Copy application source code, and the database migrations so the same image can
+# run `alembic upgrade head` as a Cloud Run job before each deploy.
 COPY app/ ./app/
+COPY migrations/ ./migrations/
+COPY alembic.ini ./
 
 # Create non-root user and drop privileges
 RUN useradd -u 1000 -m -s /bin/bash appuser && \
