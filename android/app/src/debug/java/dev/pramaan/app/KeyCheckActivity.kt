@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import dev.pramaan.crypto.AndroidKeyStoreSigner
 import kotlinx.coroutines.launch
 import java.security.KeyFactory
@@ -38,6 +39,28 @@ class KeyCheckActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (intent?.getBooleanExtra("auto_enrol", false) == true) {
+            lifecycleScope.launch {
+                try {
+                    val challenge = ByteArray(32).also { SecureRandom().nextBytes(it) }
+                    val result = signer.enrol(challenge)
+                    val challengeB64 = Base64.encodeToString(challenge, Base64.NO_WRAP)
+                    val chainB64List = result.certificateChain.map { Base64.encodeToString(it, Base64.NO_WRAP) }
+                    val chainJson = chainB64List.joinToString(separator = ",", prefix = "[", postfix = "]") { "\"$it\"" }
+                    val json = "{\"challenge_b64\":\"$challengeB64\",\"security_level\":\"${result.securityLevel.name}\",\"chain_b64\":$chainJson}"
+                    try {
+                        java.io.File(filesDir, "attestation_real_phone.json").writeText(json)
+                    } catch (e: Exception) {
+                        Log.e("KeyCheckExport", "Failed to write file", e)
+                    }
+                    Log.d("KeyCheckExport", json)
+                } catch (e: Exception) {
+                    Log.e("KeyCheckExport", "Auto-enrol failed", e)
+                }
+            }
+        }
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
