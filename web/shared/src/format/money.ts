@@ -148,6 +148,55 @@ function croreCountInWords(crore: bigint): string {
   return parts.join(' ');
 }
 
+export class InvalidRupeeInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidRupeeInputError';
+  }
+}
+
+/**
+ * Turns what a clerk typed into an integer number of paise.
+ *
+ * A person keying a payment types rupees: "980000", "9,80,000" or "9800.50".
+ * The wire format is paise as a string, and the conversion has to be exact, so
+ * it is done on the digits rather than by multiplying a float by 100 (which
+ * turns 1234.35 rupees into 123434.99999999999 paise).
+ *
+ * Throws InvalidRupeeInputError with a message written for the person who typed
+ * it, so a form can show it inline.
+ */
+export function rupeesToPaise(input: string): string {
+  const cleaned = (input ?? '').replace(/[\s,₹]/g, '');
+
+  if (cleaned === '') {
+    throw new InvalidRupeeInputError('Enter an amount.');
+  }
+  if (cleaned.startsWith('-')) {
+    throw new InvalidRupeeInputError('An amount cannot be negative.');
+  }
+  if (!/^\d*(\.\d*)?$/.test(cleaned)) {
+    throw new InvalidRupeeInputError('Use digits only, for example 9,80,000 or 9800.50.');
+  }
+
+  const [whole = '', fraction = ''] = cleaned.split('.');
+  if (whole === '' && fraction === '') {
+    throw new InvalidRupeeInputError('Enter an amount.');
+  }
+  if (fraction.length > 2) {
+    throw new InvalidRupeeInputError('Paise go to two decimal places at most.');
+  }
+
+  const paise = `${whole || '0'}${fraction.padEnd(2, '0')}`.replace(/^0+(?=\d)/, '');
+  if (!/^\d+$/.test(paise)) {
+    throw new InvalidRupeeInputError('Enter a valid amount.');
+  }
+  if (BigInt(paise) === 0n) {
+    throw new InvalidRupeeInputError('An amount must be more than zero.');
+  }
+  return paise;
+}
+
 /**
  * Compares two paise strings, for sorting a holds board by amount.
  * Returns a negative number, zero, or a positive number.
