@@ -77,12 +77,14 @@ export {
 // Formatting
 export {
   InvalidPaiseError,
+  InvalidRupeeInputError,
   amountInWords,
   assertPaise,
   comparePaise,
   formatMoney,
   type FormatMoneyOptions,
   groupIndian,
+  rupeesToPaise,
   splitPaise,
 } from './format/money';
 
