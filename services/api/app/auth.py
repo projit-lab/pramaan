@@ -33,10 +33,12 @@ async def get_current_user(
                     f"(current ENV='{settings.ENV}')"
                 ),
             )
+        email = x_dev_user if "@" in x_dev_user else f"{x_dev_user}@acme.example"
+        uid = x_dev_user.split("@")[0] if "@" in x_dev_user else x_dev_user
         return AuthenticatedUser(
-            uid=x_dev_user,
-            email=f"{x_dev_user}@acme.example",
-            roles=["finance", "clerk"],
+            uid=uid,
+            email=email,
+            roles=["finance", "clerk", "approver", "service"],
         )
 
     # 2. Check Authorization Bearer token

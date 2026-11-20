@@ -158,3 +158,37 @@ def approval_summary(a: Approval, i: PaymentIntent) -> dict[str, Any]:
         "status": a.status,
         "expires_at": ist(a.expires_at),
     }
+
+
+def approval_view(
+    a: Approval,
+    i: PaymentIntent,
+    summary_fields: dict[str, str],
+    canonical_b64: str,
+) -> dict[str, Any]:
+    import json
+
+    return {
+        "approval_id": a.approval_id,
+        "intent_id": a.intent_id,
+        "tier": i.tier,
+        "amount_paise": str(i.amount_paise),
+        "amount_in_words": None,
+        "payee": {
+            "name_at_bank": i.payee_name,
+            "account_last4": i.payee_account_last4,
+            "ifsc": i.payee_ifsc,
+            "vendor_id": i.vendor_id,
+        },
+        "payer_account_last4": i.payer_account[-4:],
+        "purpose": i.purpose,
+        "reasons": i.reasons,
+        "explanation": None,
+        "canonical_summary": json.dumps(summary_fields, ensure_ascii=False),
+        "canonical_b64": canonical_b64,
+        "summary_fields": summary_fields,
+        "nonce": a.nonce,
+        "status": a.status,
+        "decision": a.decision,
+        "expires_at": ist(a.expires_at),
+    }

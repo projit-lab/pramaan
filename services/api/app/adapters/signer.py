@@ -109,6 +109,8 @@ class KmsMandateSigner:
 
 
 def get_mandate_signer(settings: Settings):
-    if settings.ENV == "local" and not settings.ALLOW_TEST_SIGNER:
+    if settings.ENV == "local":
+        if settings.USE_REAL_KMS_IN_LOCAL:
+            return KmsMandateSigner(settings)
         return LocalKeySigner(settings)
     return KmsMandateSigner(settings)

@@ -93,6 +93,19 @@ class Device(Base):
     enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class EnrolmentChallenge(Base):
+    """One-time random nonce issued to an approver for Android Key Attestation enrolment."""
+
+    __tablename__ = "enrolment_challenges"
+
+    challenge_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    approver_email: Mapped[str] = mapped_column(String(254), index=True)
+    nonce: Mapped[str] = mapped_column(String(64), unique=True)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class Vendor(Base):
     __tablename__ = "vendors"
 
