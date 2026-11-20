@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     USE_FIRESTORE_IN_LOCAL: bool = False
     FIRESTORE_EMULATOR_HOST: str | None = None
     ATTEST_PATCH_WINDOW_MONTHS: int = 12
+    # Check every certificate in an enrolment chain against Google's live attestation
+    # status list (cached 24 h). Outside ENV=local, enrolment is refused while the list
+    # cannot be fetched; locally it falls back to "nothing revoked" with a warning.
+    ATTEST_REVOCATION_LIVE: bool = True
     ANDROID_SIGNING_SHA256: str = "3313d44bb45e66849411470eeffa85a49a66bc9d1a9718a2463b98898d93d968"
     VERSION: str = get_git_short_sha()
 

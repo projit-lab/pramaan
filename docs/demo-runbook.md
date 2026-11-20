@@ -44,7 +44,9 @@ cleartext only). Open **Pramaan Approver Check** on the phone.
 ## 3. Enrol the phone
 
 Approver Check → **Enrol with server**. Expect `Enrolled ... (StrongBox)`. The server ran
-all 11 attestation checks against Google's root before accepting the key.
+all 11 attestation checks against Google's root, and checked every certificate
+against Google's live revocation list, before accepting the key. One phone key belongs to one
+approver: enrolling the same key as someone else is refused (409).
 
 ## 4. Scene: one payment, signed and released
 
@@ -108,6 +110,7 @@ Cloud Run deployment of the live flow, the four entry doors, the payables agent.
 | --- | --- |
 | Phone shows a connection error | Same Wi-Fi? Firewall allowed Python on private networks? IP in network_security_config? |
 | `No active device` | Enrol again (step 3); a database reset forgets the phone |
+| `This key is already enrolled` (409) | The phone was enrolled as another approver; that device must be revoked first, or reset the database |
 | `Device signature invalid` | Tap **Enrol with server** again: re-enrolling replaces the key on the phone and on the server together |
 | KMS errors | `gcloud auth application-default login`, then restart uvicorn |
 | Wireless debugging dropped | Android Studio → Device Manager → pair again; keep the phone awake |

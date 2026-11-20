@@ -5,6 +5,15 @@ from app.config import Settings
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _no_live_revocation_fetch(monkeypatch):
+    """Tests never reach Google's attestation status list over the network."""
+    from app.domain.attestation import RevocationList
+    from app.routers import devices
+
+    monkeypatch.setattr(devices, "get_revocation_list", lambda _s: RevocationList(entries={}))
+
+
 @pytest.fixture
 def local_settings():
     return Settings(
