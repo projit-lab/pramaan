@@ -70,6 +70,7 @@ export function NewPayment(): ReactNode {
   const [hashing, setHashing] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [handingToAgent, setHandingToAgent] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [serverFieldErrors, setServerFieldErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -178,6 +179,39 @@ export function NewPayment(): ReactNode {
     },
     [formValid, vendorId, amount, purpose, invoice, channel, note, user, navigate],
   );
+
+  /**
+   * Hand the invoice to the payables agent instead of keying the payment.
+   *
+   * The agent reads the invoice, looks the vendor up and asks Pramaan for a
+   * mandate. It cannot release money, and this button does not approve anything.
+   * It needs an uploaded invoice, because reading the invoice is the agent's job.
+   */
+  const handToAgent = useCallback(async () => {
+    if (!invoice) return;
+    setHandingToAgent(true);
+    setBanner(null);
+
+    try {
+      const { data, error, response } = await api().POST('/agent/pay', {
+        body: {
+          invoice_ref: purpose.trim() || invoice.name,
+          ...(vendorId ? { vendor_id: vendorId } : {}),
+        },
+      });
+
+      if (error || !data) {
+        setBanner(problemMessage(toProblem(error, response?.status)));
+        return;
+      }
+
+      navigate(`/agent-runs/${data.agent_request_id}`);
+    } catch (caught) {
+      setBanner(problemMessage(toProblem(caught)));
+    } finally {
+      setHandingToAgent(false);
+    }
+  }, [invoice, purpose, vendorId, navigate]);
 
   if (vendorsProblem) {
     return (
@@ -372,14 +406,15 @@ export function NewPayment(): ReactNode {
           <button
             type="button"
             className="pr-button"
-            disabled
+            disabled={!invoice || handingToAgent || submitting}
+            onClick={() => void handToAgent()}
             title={
               invoice
-                ? 'The payables agent arrives in M3.'
+                ? 'The agent reads the invoice and asks Pramaan for a mandate. It cannot release money.'
                 : 'Upload an invoice first: the agent reads the invoice.'
             }
           >
-            Let the AI agent pay this
+            {handingToAgent ? 'Handing it over…' : 'Let the AI agent pay this'}
           </button>
         </div>
 
