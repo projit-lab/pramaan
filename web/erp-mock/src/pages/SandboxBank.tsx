@@ -16,6 +16,7 @@ import {
   COLLECTIONS,
   EmptyState,
   ErrorState,
+  type FirestoreTime,
   LoadingState,
   Money,
   type Payout,
@@ -31,16 +32,14 @@ import {
 } from '@pramaan/shared';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 
-interface PayoutRow {
-  payout_id: string;
-  mandate_id: string;
-  intent_id?: string | null;
-  amount_paise: string;
-  payee_name_at_bank: string;
-  payee_account_last4: string;
-  payee_ifsc: string;
-  status: string;
-  created_at: string;
+interface UnifiedPayout {
+  id: string;
+  mandateId: string;
+  amountPaise: string;
+  payeeNameAtBank: string;
+  payeeAccountLast4: string;
+  payeeIfsc: string;
+  createdAt: string | FirestoreTime;
 }
 
 export function SandboxBank(): ReactNode {
@@ -81,7 +80,7 @@ export function SandboxBank(): ReactNode {
 
 /** The default: GET /payouts, no sign-in needed. */
 function PayoutsFromApi(): ReactNode {
-  const [rows, setRows] = useState<PayoutRow[] | null>(null);
+  const [rows, setRows] = useState<UnifiedPayout[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -94,7 +93,26 @@ function PayoutsFromApi(): ReactNode {
         setProblem(problemMessage(toProblem(error, response?.status)));
         return;
       }
-      setRows((data.payouts ?? []) as PayoutRow[]);
+      const rawPayouts = (data.payouts ?? []) as Array<{
+        payout_id: string;
+        mandate_id: string;
+        amount_paise: string;
+        payee_name_at_bank: string;
+        payee_account_last4: string;
+        payee_ifsc: string;
+        created_at: string;
+      }>;
+      setRows(
+        rawPayouts.map((p) => ({
+          id: p.payout_id,
+          mandateId: p.mandate_id,
+          amountPaise: p.amount_paise,
+          payeeNameAtBank: p.payee_name_at_bank,
+          payeeAccountLast4: p.payee_account_last4,
+          payeeIfsc: p.payee_ifsc,
+          createdAt: p.created_at,
+        })),
+      );
     } catch (caught) {
       setProblem(problemMessage(toProblem(caught)));
     }
@@ -122,41 +140,7 @@ function PayoutsFromApi(): ReactNode {
 
   if (rows.length === 0) return <NoMoneyMoved />;
 
-  return (
-    <table className="pr-table">
-      <thead>
-        <tr>
-          <th scope="col">Payee</th>
-          <th scope="col">Amount</th>
-          <th scope="col">Released by mandate</th>
-          <th scope="col">When</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((payout) => {
-          const when = formatIstWithRelative(payout.created_at);
-          return (
-            <tr key={payout.payout_id}>
-              <td>
-                {payout.payee_name_at_bank}
-                <div className="pr-fineprint">
-                  {maskAccount(payout.payee_account_last4)} &middot;{' '}
-                  {formatIfsc(payout.payee_ifsc)}
-                </div>
-              </td>
-              <td>
-                <Money paise={payout.amount_paise} />
-              </td>
-              <td>
-                <code className="pr-mono">{payout.mandate_id}</code>
-              </td>
-              <td>{when ? when.absolute : <span className="pr-muted">&mdash;</span>}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
+  return <PayoutTable payouts={rows} />;
 }
 
 /** The alternative: read Firestore directly, which needs a signed-in clerk. */
@@ -175,6 +159,10 @@ function PayoutsFromFirestore(): ReactNode {
   }
   if (data.length === 0) return <NoMoneyMoved />;
 
+  return <PayoutTable payouts={data} />;
+}
+
+function PayoutTable({ payouts }: { payouts: readonly UnifiedPayout[] }): ReactNode {
   return (
     <table className="pr-table">
       <thead>
@@ -186,12 +174,12 @@ function PayoutsFromFirestore(): ReactNode {
         </tr>
       </thead>
       <tbody>
-        {data.map((payout) => {
+        {payouts.map((payout) => {
           const when = formatIstWithRelative(payout.createdAt);
           return (
             <tr key={payout.id}>
               <td>
-                {payout.payeeName}
+                {payout.payeeNameAtBank}
                 <div className="pr-fineprint">
                   {maskAccount(payout.payeeAccountLast4)} &middot;{' '}
                   {formatIfsc(payout.payeeIfsc)}

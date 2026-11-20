@@ -16,6 +16,12 @@
   "type": "module",
   "scripts": {
     "gen:api": "openapi-typescript ../contracts/openapi.yaml --output shared/src/api/schema.d.ts",
+    "prebuild": "npm run gen:api",
+    "pretypecheck": "npm run gen:api",
+    "predev": "npm run gen:api",
+    "predev:console": "npm run gen:api",
+    "predev:erp": "npm run gen:api",
+    "predev:verify": "npm run gen:api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",

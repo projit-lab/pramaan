@@ -8,12 +8,6 @@
 # through as opaque strings; it does not define their construction or semantics.
 # Shoaib owns display fields.
 #
-# Two things in here are proposals that need an explicit yes or no:
-#   1. GET /mandates/{id} returns canonical_b64, the exact bytes that were
-#      countersigned, so the verifier page can hash them in the browser without a
-#      third canonicalisation implementation in TypeScript.
-#   2. GET /payouts exists so the public sandbox bank page can read payouts
-#      without signing in (Firestore rules require auth). See contracts/firestore.md.
 openapi: 3.1.0
 info:
   title: Pramaan API
@@ -553,10 +547,10 @@ paths:
         No sign-in required, because an auditor or payee must be able to check a
         mandate they were handed. Lands in M2.
 
-        PROPOSAL: canonical_b64 carries the exact bytes that were countersigned,
-        base64-encoded, so the browser can hash them with WebCrypto. Without it the
-        verifier page would need a third canonicalisation implementation in
-        TypeScript, which would drift from the Kotlin and Python ones.
+        summary_b64 and mandate_b64 carry the exact bytes that were signed:
+        summary_b64 is signed by the approver device, and mandate_b64 is
+        countersigned by Cloud KMS HSM. Verifiers must verify both signatures
+        in order, and decode display fields exclusively from the signed bytes.
       operationId: getMandate
       security: []
       parameters:
@@ -1467,10 +1461,20 @@ components:
     Mandate:
       type: object
       description: |
-        An AP2-style record. The security blocks (summary_sha256, approval
-        signature, attestation evidence, countersignature) are Prajit's; the web
-        lane displays and verifies them but does not define them.
-      required: [mandate_id, type, intent_id, summary_sha256, decision, tier, approval, countersignature, expires_at]
+        An AP2-style dual-signed record. The approver's phone and Cloud KMS sign DIFFERENT bytes:
+        the phone signs the payment summary (summary_b64) with its hardware key; Cloud KMS
+        countersigns the mandate (mandate_b64) which binds summary_sha256 and the phone's device public key.
+
+        Verification order (must fail closed at any step):
+          a. KMS countersignature over mandate_b64 (public key from GET /keys/countersign).
+          b. Take the device public key ONLY from inside the decoded mandate_b64; ignore any key in the outer JSON.
+          c. Approver signature (DER converted to raw r||s) over summary_b64 with that device key.
+          d. SHA-256(summary_b64 bytes) must equal summary_sha256 inside mandate_b64.
+          e. Expiry from inside mandate_b64.
+
+        Display rule: Verifiers must parse and display payee, account, IFSC and amount from
+        summary_b64 only; display decision, tier, device, and signed time from mandate_b64 only.
+      required: [mandate_id, type, intent_id, summary_sha256, summary_b64, mandate_b64, decision, tier, approval, countersignature, expires_at]
       properties:
         mandate_id:
           type: string
@@ -1482,12 +1486,18 @@ components:
         summary_sha256:
           type: string
           pattern: "^[0-9a-f]{64}$"
-        canonical_b64:
+        summary_b64:
           type: string
           description: |
-            PROPOSAL. The exact canonical mandate bytes that were countersigned,
-            base64-encoded, so the verifier page can hash them in the browser
-            instead of re-implementing canonicalisation in TypeScript.
+            Base64 of the exact canonical payment summary bytes the approver's device signed
+            (keys sorted, no whitespace, all values strings, NFC-normalised).
+        mandate_b64:
+          type: string
+          description: |
+            Base64 of the exact canonical mandate bytes Cloud KMS countersigned. The mandate
+            contains summary_sha256, decision, tier, policy_version, device_id, the device
+            public key (SPKI, base64), key_security_level, integrity verdict, the approver
+            signature, signed_at and expires_at.
         decision:
           $ref: '#/components/schemas/Decision'
         tier:
@@ -1542,6 +1552,9 @@ components:
                 The Play Integrity verdict, only when the server really verified
                 one. Null means no verdict, and the screen must say so rather than
                 imply a passed check.
+            public_key:
+              type: [string, 'null']
+              description: Approver device P-256 public key (SPKI PEM or base64 DER).
             signature:
               type: string
               description: Base64. Owned by Prajit.
@@ -1551,6 +1564,9 @@ components:
           properties:
             kms_key_version:
               type: string
+            public_key:
+              type: [string, 'null']
+              description: KMS P-256 public key (SPKI PEM), if bundled.
             signature:
               type: string
               description: |

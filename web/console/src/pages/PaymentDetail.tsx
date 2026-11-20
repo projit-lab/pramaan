@@ -70,7 +70,7 @@ export function PaymentDetail(): ReactNode {
         <div className="pr-spread">
           <div>
             <h1 id="summary-heading" className="pr-h1">
-              {payment.payeeName}
+              {payment.payeeNameAtBank}
             </h1>
             <p className="pr-muted">
               {maskAccount(payment.payeeAccountLast4)} &middot; {payment.payeeIfsc}

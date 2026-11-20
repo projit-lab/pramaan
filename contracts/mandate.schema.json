@@ -1,7 +1,129 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pramaan payment mandate",
+  "description": "An AP2-style dual-signed record. The approver's phone and Cloud KMS sign DIFFERENT bytes: the phone signs the payment summary (summary_b64) with its hardware key; Cloud KMS countersigns the mandate (mandate_b64) which binds summary_sha256 and the phone's device public key.",
   "type": "object",
-  "properties": {},
-  "required": []
+  "required": [
+    "mandate_id",
+    "type",
+    "intent_id",
+    "summary_sha256",
+    "summary_b64",
+    "mandate_b64",
+    "decision",
+    "tier",
+    "approval",
+    "countersignature",
+    "expires_at"
+  ],
+  "properties": {
+    "mandate_id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "const": "pramaan.payment_mandate.v1"
+    },
+    "intent_id": {
+      "type": "string"
+    },
+    "summary_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "summary_b64": {
+      "type": "string",
+      "description": "Base64 of the exact canonical payment summary bytes the approver's device signed (keys sorted, no whitespace, all values strings, NFC-normalised)."
+    },
+    "mandate_b64": {
+      "type": "string",
+      "description": "Base64 of the exact canonical mandate bytes Cloud KMS countersigned. Contains summary_sha256, decision, tier, policy_version, device_id, the device public key (SPKI, base64), key_security_level, integrity verdict, the approver signature, signed_at and expires_at."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["approve", "decline"]
+    },
+    "tier": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "policy_version": {
+      "type": ["string", "null"]
+    },
+    "payer": {
+      "type": "object",
+      "properties": {
+        "company": { "type": "string" },
+        "account_last4": { "type": "string" }
+      }
+    },
+    "payee": {
+      "type": "object",
+      "required": ["name_at_bank", "account_last4", "ifsc"],
+      "properties": {
+        "name_at_bank": { "type": "string" },
+        "account_last4": { "type": "string" },
+        "ifsc": { "type": "string" },
+        "vendor_id": { "type": ["string", "null"] }
+      }
+    },
+    "amount_paise": {
+      "type": "string",
+      "pattern": "^[0-9]+$"
+    },
+    "currency": {
+      "type": "string",
+      "const": "INR"
+    },
+    "purpose": {
+      "type": "object",
+      "properties": {
+        "invoice": { "type": ["string", "null"] },
+        "invoice_sha256": { "type": ["string", "null"] }
+      }
+    },
+    "initiator": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "enum": ["human", "agent"] },
+        "id": { "type": "string" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": ["approver", "decision", "signed_at", "signature"],
+      "properties": {
+        "approver": { "type": "string" },
+        "decision": { "type": "string", "enum": ["approve", "decline"] },
+        "signed_at": { "type": "string" },
+        "device_id": { "type": ["string", "null"] },
+        "key_security_level": { "type": ["string", "null"], "enum": ["StrongBox", "TrustedEnvironment", "Software", null] },
+        "patch_level": { "type": ["string", "null"] },
+        "device_integrity": { "type": ["string", "null"] },
+        "public_key": { "type": ["string", "null"] },
+        "signature": { "type": "string" }
+      }
+    },
+    "countersignature": {
+      "type": "object",
+      "required": ["kms_key_version", "signature"],
+      "properties": {
+        "kms_key_version": { "type": "string" },
+        "public_key": { "type": ["string", "null"] },
+        "signature": { "type": "string" },
+        "algorithm": { "type": "string", "const": "EC_SIGN_P256_SHA256" }
+      }
+    },
+    "signed_at": {
+      "type": ["string", "null"]
+    },
+    "expires_at": {
+      "type": "string"
+    },
+    "used_at": {
+      "type": ["string", "null"]
+    }
+  }
 }
