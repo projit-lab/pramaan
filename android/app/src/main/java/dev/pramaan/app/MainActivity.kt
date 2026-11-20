@@ -1,7 +1,7 @@
 package dev.pramaan.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +45,7 @@ import java.net.URL
  * seeded Tier 2 approval. With a google-services.json the real Gemini Live
  * session is used; without one you type the digits you would have spoken.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val hasFirebase = FirebaseApp.initializeApp(this) != null || FirebaseApp.getApps(this).isNotEmpty()
