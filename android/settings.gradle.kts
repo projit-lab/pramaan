@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Pramaan"
 include(":app")
+include(":core-crypto")
