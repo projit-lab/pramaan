@@ -66,10 +66,14 @@ class Approver(Base):
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.company_id"))
     email: Mapped[str] = mapped_column(String(254), unique=True)
     display_name: Mapped[str] = mapped_column(String(200))
-    # AP Manager, Controller, CFO, MD. The M2+ hierarchy uses it; M2 routes by email.
+    # AP Manager, Controller, CFO, MD.
     role: Mapped[str] = mapped_column(String(40))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # M2+: seniority (1 AP Manager, 2 Controller, 3 CFO, 4 MD) and where in the
+    # organisation tree this approver sits. Routing walks up from the department.
+    level: Mapped[int | None] = mapped_column(Integer)
+    node_id: Mapped[str | None] = mapped_column(ForeignKey("org_nodes.node_id"))
 
 
 class Device(Base):
@@ -158,6 +162,15 @@ class PaymentIntent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M2+: where the payment sits in the tree, which lane it went to, every rule
+    # that fired with its path, and the automatic payee checks.
+    department_id: Mapped[str | None] = mapped_column(ForeignKey("org_nodes.node_id"))
+    lane: Mapped[str | None] = mapped_column(String(15))  # individual, batch, auto_release
+    decision_trace: Mapped[dict[str, Any] | None] = mapped_column(JsonType)
+    payee_checks: Mapped[dict[str, Any] | None] = mapped_column(JsonType)
+    batch_window_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    batch_id: Mapped[str | None] = mapped_column(String(40))
+    standing_mandate_id: Mapped[str | None] = mapped_column(String(40))
 
 
 class Approval(Base):
@@ -182,6 +195,11 @@ class Approval(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # M2+: the seniority this approval needs, when it escalates upward if nobody
+    # has decided, and which approval it escalated from.
+    required_level: Mapped[int | None] = mapped_column(Integer)
+    escalate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escalated_from: Mapped[str | None] = mapped_column(String(40))
 
 
 class Mandate(Base):
@@ -198,6 +216,113 @@ class Mandate(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OrgNode(Base):
+    """M2+ organisation tree: group > company > plant > department. `settings`
+    may only tighten what the parent allows (lower thresholds, narrower hours)."""
+
+    __tablename__ = "org_nodes"
+
+    node_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("org_nodes.node_id"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # group, company, plant, department
+    name: Mapped[str] = mapped_column(String(200))
+    company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.company_id"))
+    settings: Mapped[dict[str, Any]] = mapped_column(JsonType)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class OrgRule(Base):
+    """A rule on one node, written in CEL over the payment's attributes. When it
+    matches, the payment needs at least `min_tier`; `hard_flag` also sends it to
+    individual review."""
+
+    __tablename__ = "org_rules"
+    __table_args__ = (UniqueConstraint("node_id", "code", name="uq_org_rules_node_code"),)
+
+    rule_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("org_nodes.node_id"), index=True)
+    code: Mapped[str] = mapped_column(String(60))
+    text: Mapped[str] = mapped_column(String(300))
+    expression: Mapped[str] = mapped_column(Text)
+    min_tier: Mapped[int] = mapped_column(Integer)
+    hard_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Delegation(Base):
+    """Time-boxed delegation. The rule enforced here: never to someone more
+    junior. Signing by the delegating approver arrives with the M5 workflow."""
+
+    __tablename__ = "delegations"
+
+    delegation_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    delegator_email: Mapped[str] = mapped_column(ForeignKey("approvers.email"), index=True)
+    delegate_email: Mapped[str] = mapped_column(ForeignKey("approvers.email"))
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StandingMandate(Base):
+    """A signed standing mandate (Prajit owns the signed format and the gate check).
+    The engine reads it to put a payment in the auto-release lane, and keeps the
+    usage counters in standing_mandate_usage."""
+
+    __tablename__ = "standing_mandates"
+
+    standing_mandate_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.company_id"))
+    vendor_id: Mapped[str] = mapped_column(ForeignKey("vendors.vendor_id"), index=True)
+    payee_account_sha256: Mapped[str] = mapped_column(String(64))
+    payee_ifsc: Mapped[str] = mapped_column(String(11))
+    cap_per_payment_paise: Mapped[int] = mapped_column(BigInteger)
+    cap_per_month_paise: Mapped[int] = mapped_column(BigInteger)
+    max_count: Mapped[int] = mapped_column(Integer)
+    approver_email: Mapped[str] = mapped_column(String(254))
+    signature: Mapped[str | None] = mapped_column(Text)  # Prajit's; verified before insert
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class StandingMandateUsage(Base):
+    """Monthly total and count per standing mandate, changed only by a single
+    conditional UPDATE so two payments can never both slip under the cap."""
+
+    __tablename__ = "standing_mandate_usage"
+    __table_args__ = (
+        CheckConstraint("total_paise >= 0", name="total_non_negative"),
+        CheckConstraint("used_count >= 0", name="count_non_negative"),
+    )
+
+    standing_mandate_id: Mapped[str] = mapped_column(
+        ForeignKey("standing_mandates.standing_mandate_id"), primary_key=True
+    )
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)  # YYYY-MM in IST
+    total_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Batch(Base):
+    """The batch lane gathered at one approval window, for one approver to sign
+    with a single fingerprint (Prajit owns the signed batch format)."""
+
+    __tablename__ = "batches"
+
+    batch_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.company_id"))
+    department_id: Mapped[str | None] = mapped_column(ForeignKey("org_nodes.node_id"))
+    window_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    approver_email: Mapped[str] = mapped_column(String(254))
+    nonce: Mapped[str] = mapped_column(String(64), unique=True)
+    line_count: Mapped[int] = mapped_column(Integer)
+    total_paise: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(10))  # pending, decided, expired
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class Policy(Base):

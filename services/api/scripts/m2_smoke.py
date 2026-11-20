@@ -91,17 +91,17 @@ with httpx.Client(base_url=BASE, timeout=10) as c:
         r.status_code == 422 and r.headers["content-type"] == "application/problem+json",
     )
 
-    cfo = c.get("/v1/approvals?status=pending", headers=user("cfo")).json()["approvals"]
-    md = c.get("/v1/approvals?status=pending", headers=user("md")).json()["approvals"]
-    boss_cfo = next((a for a in cfo if a["intent_id"] == boss["intent_id"]), None)
+    # Since M2+, tier 2 goes to the nearest Controller (the approver hierarchy).
+    ctrl = c.get("/v1/approvals?status=pending", headers=user("controller")).json()["approvals"]
+    boss_cfo = next((a for a in ctrl if a["intent_id"] == boss["intent_id"]), None)
     check(
-        "boss scam waits for the CFO and the MD",
-        boss_cfo is not None and any(a["intent_id"] == boss["intent_id"] for a in md),
-        f"cfo has {len(cfo)}, md has {len(md)}",
+        "boss scam waits for the Controller",
+        boss_cfo is not None,
+        f"controller has {len(ctrl)}",
     )
     check(
-        "CFO's list is riskiest first",
-        [a["tier"] for a in cfo] == sorted([a["tier"] for a in cfo], reverse=True),
+        "Controller's list is riskiest first",
+        [a["tier"] for a in ctrl] == sorted([a["tier"] for a in ctrl], reverse=True),
     )
 
     p = c.get(f"/v1/intents/{boss['intent_id']}", headers=user("clerk")).json()
@@ -115,23 +115,21 @@ with httpx.Client(base_url=BASE, timeout=10) as c:
     r = c.post(
         f"/v1/_local/approvals/{boss_cfo['approval_id']}/block",
         json={"decision": "report_fraud"},
-        headers=user("cfo"),
+        headers=user("controller"),
     )
     check(
-        "CFO reports it as fraud",
+        "Controller reports it as fraud",
         r.status_code == 200 and r.json()["status"] == "blocked",
         r.text[:120],
     )
     p = c.get(f"/v1/intents/{boss['intent_id']}", headers=user("clerk")).json()
     check("payment is now blocked", p["status"] == "blocked", p["status"])
-    md_after = c.get("/v1/approvals?status=pending", headers=user("md")).json()["approvals"]
-    check(
-        "MD's approval closed with it", all(a["intent_id"] != boss["intent_id"] for a in md_after)
-    )
+    left = c.get("/v1/approvals?status=pending", headers=user("controller")).json()["approvals"]
+    check("its approval left the list", all(a["intent_id"] != boss["intent_id"] for a in left))
     r = c.post(
         f"/v1/_local/approvals/{boss_cfo['approval_id']}/block",
         json={"decision": "decline"},
-        headers=user("cfo"),
+        headers=user("controller"),
     )
     check("deciding twice is refused", r.status_code == 409, str(r.status_code))
 

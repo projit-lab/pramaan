@@ -112,6 +112,34 @@ python scripts/m2_smoke.py
 
 Set `PRAMAAN_TEST_PG_URL` to an empty PostgreSQL database to run the schema test against PostgreSQL too.
 
+## M2+ hierarchy engine (Danish)
+
+Fewer approvals: each payment is judged on its attributes, with rules that flow down the
+organisation. Prajit owns the standing and batch signed formats and the gate checks.
+
+| Piece | Where |
+| :--- | :--- |
+| **Organisation tree** group > company > plant > department, each node with settings and rules in CEL (`org_nodes`, `org_rules`, migration `0002`) | `app/domain/hierarchy.py`, `app/services/org.py` |
+| **Hierarchy evaluation**: every enabled rule from the root to the payment's department; the strictest tier wins; a rule that cannot be evaluated sends the payment to a person; every decision records the rule and its path | `evaluate_hierarchy()` |
+| **Tighten-only**: a node may lower thresholds and narrow hours, never the reverse; it cannot switch off, weaken or un-flag a parent's rule; invalid CEL and wrong node kinds are refused | `validate_tighten_only()`, `PUT /v1/org/nodes/{nodeId}` returns 422 with the reasons |
+| **Approver hierarchy**: Tier 1 AP Manager+, Tier 2 Controller+, Tier 3 CFO and MD; nearest qualified person up the tree; escalation upward after `ESCALATE_AFTER_HOURS`; delegation never to someone more junior | `app/domain/approver_levels.py`, `app/services/jobs.py` |
+| **Automatic payee checks**: name at the (mock) bank, look-alike against vendors established earlier, invoice match (once M3 supplies the extraction), unusual amount | `app/domain/payee_checks.py`, `app/adapters/bank_lookup.py` |
+| **Lane sorter**: individual review, auto-release, or the batch at the next approval window (default 11:00 and 16:00 IST), first matching row wins | `app/domain/lanes.py` |
+| **Standing-mandate counters**: monthly total and count, changed by one conditional UPDATE so two payments never share the last of a cap; a bank change voids the mandate | `app/services/standing.py` |
+
+New routes: `GET /v1/org/tree`, `PUT /v1/org/nodes/{nodeId}`, `GET /v1/approvers`,
+`GET /v1/batches`, `GET /v1/standing-mandates`, `POST /v1/standing-mandates/{id}/revoke`
+(proposals in `contracts/openapi.yaml`). `POST /v1/intents` also returns `lane`,
+`decision_trace` and `batch_window_at`, and accepts `department_id`.
+
+The two jobs (`close_due_batches`, `escalate_overdue`) need a Cloud Scheduler trigger in the
+cloud; `ENV=local` runs them through `POST /v1/_local/jobs/close-batches` and
+`/v1/_local/jobs/escalate`.
+
+```powershell
+python scripts/m2plus_smoke.py
+```
+
 ---
 
 ## Deployment to Cloud Run

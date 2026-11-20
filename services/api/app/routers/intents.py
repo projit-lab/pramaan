@@ -47,6 +47,9 @@ class IntentCreate(BaseModel):
     instruction_channel: Literal["portal", "email", "chat", "phone", "agent"]
     instruction_note: str | None = Field(default=None, max_length=2000)
     initiator: InitiatorIn
+    # M2+: where in the organisation the payment belongs; defaults to the
+    # company's accounts-payable department.
+    department_id: str | None = Field(default=None, pattern=r"^org_[A-Za-z0-9_]+$")
 
     @model_validator(mode="after")
     def _check(self) -> IntentCreate:

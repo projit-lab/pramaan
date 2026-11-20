@@ -131,6 +131,14 @@ def intent_view(i: PaymentIntent) -> dict[str, Any]:
         # `approval` (signed-approval evidence) arrives with Shoaib's contract change
         # on his branch; add it here when that contract merges.
         "mandate_id": i.mandate_id,
+        # M2+
+        "department_id": i.department_id,
+        "lane": i.lane,
+        "decision_trace": i.decision_trace,
+        "payee_checks": i.payee_checks,
+        "batch_window_at": ist(i.batch_window_at),
+        "batch_id": i.batch_id,
+        "standing_mandate_id": i.standing_mandate_id,
         "agent_request_id": None,  # M3
         "created_at": ist(i.created_at),
         "updated_at": ist(i.updated_at),

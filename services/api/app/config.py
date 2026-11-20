@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     COMPANY_ID: str = "co_acme"
     # How long an approver has to decide before the approval expires.
     APPROVAL_TTL_HOURS: int = 24
+    # M2+: the department a payment belongs to when the caller does not say, and
+    # how long an approval waits before it escalates to someone more senior.
+    DEFAULT_DEPARTMENT_ID: str = "org_acme_ap"
+    ESCALATE_AFTER_HOURS: int = 4
 
 
 @lru_cache
