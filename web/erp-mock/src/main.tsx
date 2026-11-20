@@ -1,0 +1,25 @@
+import { AuthProvider } from '@pramaan/shared';
+import '@pramaan/shared/styles/tokens.css';
+import '@pramaan/shared/styles/base.css';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import { App } from './App';
+
+const container = document.getElementById('root');
+if (!container) {
+  throw new Error('No #root element in index.html.');
+}
+
+// The role gate is applied per route rather than around the whole app, because
+// the sandbox bank page is public: an auditor or a judge must be able to open it
+// without signing in to anything.
+createRoot(container).render(
+  <StrictMode>
+    <AuthProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </AuthProvider>
+  </StrictMode>,
+);
