@@ -31,3 +31,11 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def env(tmp_path):
+    """M2 / M2+ API tests: (TestClient, Runtime, Clock) on a fresh seeded database."""
+    from tests.test_m2_api import make_env
+
+    return make_env(tmp_path)

@@ -20,18 +20,34 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _run(conn) -> None:
+    sqlite = conn.dialect.name == "sqlite"
+    if sqlite:
+        # SQLite changes a table by rebuilding it, which would break existing rows'
+        # foreign keys mid-migration. Alembic's documented approach: switch the check
+        # off for the migration, then verify every key afterwards. PostgreSQL
+        # (AlloyDB) alters tables in place and needs none of this.
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        conn.commit()
+    context.configure(connection=conn, target_metadata=target_metadata, render_as_batch=sqlite)
+    with context.begin_transaction():
+        context.run_migrations()
+    if sqlite:
+        broken = conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+        conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+        conn.commit()
+        if broken:
+            raise RuntimeError(f"migration left broken foreign keys: {broken[:5]}")
+
+
 def run_migrations_online() -> None:
     connection = context.config.attributes.get("connection")
     if connection is not None:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+        _run(connection)
         return
     engine = make_engine(_url())
     with engine.connect() as conn:
-        context.configure(connection=conn, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
+        _run(conn)
 
 
 if context.is_offline_mode():

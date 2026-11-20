@@ -683,6 +683,177 @@ paths:
                 additionalProperties: true
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /org/tree:
+    get:
+      tags: [policies]
+      summary: The organisation tree with each node's rules
+      description: |
+        PROPOSAL (Danish, M2+), needs Prajit's and Shoaib's approval. Read by the
+        policy editor tree. inherited_rule_codes are shown greyed.
+      operationId: getOrgTree
+      responses:
+        '200':
+          description: Every node, root first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodes]
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrgNode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /org/nodes/{nodeId}:
+    put:
+      tags: [policies]
+      summary: Create or replace one node's settings and rules
+      description: |
+        PROPOSAL (Danish, M2+). Rejected with 422 when the change would loosen
+        anything the node inherits (a higher threshold, wider working hours,
+        switching off or weakening a parent's rule); `errors` says why.
+      operationId: putOrgNode
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^org_[A-Za-z0-9_]+$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_id: {type: [string, 'null']}
+                kind: {type: [string, 'null'], enum: [group, company, plant, department, null]}
+                name: {type: [string, 'null']}
+                settings: {$ref: '#/components/schemas/OrgSettings'}
+                rules:
+                  type: array
+                  items: {$ref: '#/components/schemas/OrgRule'}
+      responses:
+        '200':
+          description: The whole tree after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items: {$ref: '#/components/schemas/OrgNode'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /approvers:
+    get:
+      tags: [approvals]
+      summary: The approver hierarchy
+      description: PROPOSAL (Danish, M2+). Read by the approver hierarchy screen.
+      operationId: listApprovers
+      responses:
+        '200':
+          description: Approvers, most senior first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvers]
+                properties:
+                  approvers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email: {type: string}
+                        display_name: {type: string}
+                        role: {type: string}
+                        level: {type: [integer, 'null'], description: "1 AP Manager, 2 Controller, 3 CFO, 4 MD"}
+                        level_name: {type: [string, 'null']}
+                        node_id: {type: [string, 'null']}
+                        active: {type: boolean}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /batches:
+    get:
+      tags: [approvals]
+      summary: The caller's batches, each signed with one fingerprint
+      description: |
+        PROPOSAL (Danish, M2+). Read by the app's batch review screen and the
+        console's batch view. The signed batch format is Prajit's.
+      operationId: listBatches
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: {type: string, enum: [pending, decided, expired]}
+      responses:
+        '200':
+          description: Batches with their lines
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items: {$ref: '#/components/schemas/BatchSummary'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /standing-mandates:
+    get:
+      tags: [mandates]
+      summary: Standing mandates with this month's usage against their limits
+      description: PROPOSAL (Danish, M2+). Creating one needs Prajit's signed format.
+      operationId: listStandingMandates
+      responses:
+        '200':
+          description: Standing mandates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [standing_mandates]
+                properties:
+                  standing_mandates:
+                    type: array
+                    items: {$ref: '#/components/schemas/StandingMandateSummary'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /standing-mandates/{standingMandateId}/revoke:
+    post:
+      tags: [mandates]
+      summary: Revoke a standing mandate
+      description: PROPOSAL (Danish, M2+). Revoking only ever stops payments.
+      operationId: revokeStandingMandate
+      parameters:
+        - name: standingMandateId
+          in: path
+          required: true
+          schema: {type: string, pattern: "^sm_[A-Za-z0-9]+$"}
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  standing_mandate_id: {type: string}
+                  revoked: {type: boolean}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /policies:
     get:
       tags: [policies]
@@ -1269,6 +1440,148 @@ components:
           description: What the instruction said, in the clerk's words.
         initiator:
           $ref: '#/components/schemas/Initiator'
+        department_id:
+          type: [string, 'null']
+          pattern: "^org_[A-Za-z0-9_]+$"
+          description: |
+            PROPOSAL (Danish, M2+), needs Prajit's and Shoaib's approval. Where in
+            the organisation tree the payment belongs. Defaults to the company's
+            accounts-payable department.
+    Lane:
+      type: string
+      description: |
+        PROPOSAL (Danish, M2+). individual = a person reviews it; batch = signed with
+        the next approval window's batch; auto_release = passed every rule and is
+        logged, no approval.
+      enum: [individual, batch, auto_release]
+    DecisionTrace:
+      type: object
+      description: |
+        PROPOSAL (Danish, M2+). Why the payment went where it did: the department
+        path, every hierarchy rule that fired with where it lives in the tree, the
+        lane row that matched, and the thresholds that applied.
+      additionalProperties: true
+      properties:
+        department:
+          type: string
+        tier_v1:
+          type: integer
+        tier_floor:
+          type: integer
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              rule_id: {type: string}
+              code: {type: string}
+              text: {type: string}
+              min_tier: {type: integer}
+              hard_flag: {type: boolean}
+              path: {type: string, description: "Node names, root first, joined with ' > '"}
+        lane:
+          type: object
+          properties:
+            lane: {$ref: '#/components/schemas/Lane'}
+            row: {type: integer}
+            why: {type: string}
+            hard_flags: {type: array, items: {type: string}}
+        required_levels:
+          type: array
+          items: {type: string}
+    PayeeChecks:
+      type: object
+      description: PROPOSAL (Danish, M2+). The automatic checks run before any approver sees the payment.
+      properties:
+        name_check: {type: string, enum: [match, mismatch, not_found]}
+        bank_name: {type: [string, 'null']}
+        look_alike: {type: boolean}
+        look_alike_of: {type: [string, 'null'], description: The vendor id it resembles}
+        look_alike_score: {type: number}
+        invoice_match: {type: string, enum: [match, mismatch, unknown]}
+        invoice_mismatches: {type: array, items: {type: string}}
+        unusual_amount: {type: boolean}
+        passed: {type: boolean}
+    OrgSettings:
+      type: object
+      description: PROPOSAL (M2+). Each value may only tighten what the node inherits.
+      properties:
+        tier1_paise: {$ref: '#/components/schemas/Paise'}
+        tier2_paise: {$ref: '#/components/schemas/Paise'}
+        tier3_paise: {$ref: '#/components/schemas/Paise'}
+        working_hours_ist:
+          type: object
+          properties:
+            start: {type: string}
+            end: {type: string}
+        approval_windows_ist:
+          type: array
+          items: {type: string, description: "HH:MM in IST"}
+    OrgRule:
+      type: object
+      description: PROPOSAL (M2+). A rule in CEL over the payment's attributes.
+      required: [code, text, expression, min_tier]
+      properties:
+        rule_id: {type: [string, 'null']}
+        code: {type: string, pattern: "^[a-z][a-z0-9_]{1,59}$"}
+        text: {type: string}
+        expression: {type: string, description: "CEL, for example payment.payee.is_new && payment.amount_paise > 100000000"}
+        min_tier: {$ref: '#/components/schemas/Tier'}
+        hard_flag: {type: boolean, default: false}
+        enabled: {type: boolean, default: true}
+    OrgNode:
+      type: object
+      description: PROPOSAL (M2+).
+      required: [node_id, kind, name, settings, rules, inherited_rule_codes]
+      properties:
+        node_id: {type: string}
+        parent_id: {type: [string, 'null']}
+        kind: {type: string, enum: [group, company, plant, department]}
+        name: {type: string}
+        settings: {$ref: '#/components/schemas/OrgSettings'}
+        rules:
+          type: array
+          items: {$ref: '#/components/schemas/OrgRule'}
+        inherited_rule_codes:
+          type: array
+          items: {type: string}
+    BatchSummary:
+      type: object
+      description: PROPOSAL (M2+).
+      required: [batch_id, window_at, status, line_count, total_paise, lines]
+      properties:
+        batch_id: {type: string}
+        window_at: {$ref: '#/components/schemas/Timestamp'}
+        status: {type: string, enum: [pending, decided, expired]}
+        line_count: {type: integer}
+        total_paise: {$ref: '#/components/schemas/Paise'}
+        expires_at: {type: [string, 'null']}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              intent_id: {type: string}
+              amount_paise: {$ref: '#/components/schemas/Paise'}
+              payee_name_at_bank: {type: string}
+              payee_account_last4: {type: string}
+              tier: {$ref: '#/components/schemas/Tier'}
+              checks_passed: {type: boolean}
+    StandingMandateSummary:
+      type: object
+      description: PROPOSAL (M2+). The signed fields are Prajit's; usage is per IST calendar month.
+      properties:
+        standing_mandate_id: {type: string}
+        vendor_id: {type: string}
+        payee_ifsc: {type: string}
+        approver: {type: string}
+        cap_per_payment_paise: {$ref: '#/components/schemas/Paise'}
+        cap_per_month_paise: {$ref: '#/components/schemas/Paise'}
+        max_count: {type: integer}
+        used_this_month_paise: {$ref: '#/components/schemas/Paise'}
+        used_this_month_count: {type: integer}
+        expires_at: {type: [string, 'null']}
+        revoked: {type: boolean}
     IntentDecision:
       type: object
       required: [intent_id, decision, status, tier, reasons, created_at]
@@ -1288,6 +1601,13 @@ components:
             $ref: '#/components/schemas/Reason'
         policy_version:
           type: string
+        lane:
+          $ref: '#/components/schemas/Lane'
+        decision_trace:
+          $ref: '#/components/schemas/DecisionTrace'
+        batch_window_at:
+          type: [string, 'null']
+          description: PROPOSAL (M2+). Set for the batch lane, the window it will be signed in.
         created_at:
           $ref: '#/components/schemas/Timestamp'
     PaymentIntent:
@@ -1351,6 +1671,28 @@ components:
           $ref: '#/components/schemas/Timestamp'
         expires_at:
           type: [string, 'null']
+        department_id:
+          type: [string, 'null']
+          description: PROPOSAL (Danish, M2+).
+        lane:
+          oneOf:
+            - $ref: '#/components/schemas/Lane'
+            - type: 'null'
+        decision_trace:
+          oneOf:
+            - $ref: '#/components/schemas/DecisionTrace'
+            - type: 'null'
+        payee_checks:
+          oneOf:
+            - $ref: '#/components/schemas/PayeeChecks'
+            - type: 'null'
+        batch_window_at:
+          type: [string, 'null']
+        batch_id:
+          type: [string, 'null']
+        standing_mandate_id:
+          type: [string, 'null']
+          description: PROPOSAL (M2+). Set when the payment auto-released under a standing mandate.
     InvoiceExtraction:
       type: object
       description: |

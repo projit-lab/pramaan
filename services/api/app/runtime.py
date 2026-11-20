@@ -57,9 +57,10 @@ def build_runtime(settings: Settings, url: str | None = None, seed: bool | None 
         # `alembic upgrade head` runs as a deploy step, never at request time.
         migrate(url)
     if seed if seed is not None else (settings.ENV == "local" or settings.DEMO_MODE):
-        from app.db.seed import seed_if_empty
+        from app.db.seed import seed_if_empty, seed_m2plus_if_missing
 
         seed_if_empty(sessions, settings.COMPANY_ID)
+        seed_m2plus_if_missing(sessions, settings.COMPANY_ID)
     return Runtime(
         settings=settings,
         sessions=sessions,

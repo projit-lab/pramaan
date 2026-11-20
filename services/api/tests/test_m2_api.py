@@ -44,8 +44,9 @@ class Clock:
         return self.t
 
 
-@pytest.fixture
-def env(tmp_path):
+def make_env(tmp_path):
+    """Builds the `env` fixture (see conftest.py): a fresh migrated, seeded
+    database, in-memory adapters, a client, and a clock fixed at noon IST."""
     url = f"sqlite:///{(tmp_path / 'm2.db').as_posix()}"
     migrate(url)
     sessions = make_session_factory(make_engine(url))
@@ -123,7 +124,7 @@ def test_genuine_small_payment_is_released_at_tier_0(env):
     assert events(rt, "intent.decided")[0]["data"]["approvers"] == []
 
 
-def test_boss_scam_is_held_at_tier_2_for_cfo_and_md(env):
+def test_boss_scam_is_held_at_tier_2_for_the_controller(env):
     client, rt, _ = env
     r = post_intent(
         client,
@@ -135,13 +136,17 @@ def test_boss_scam_is_held_at_tier_2_for_cfo_and_md(env):
     )
     body = r.json()
     assert (body["decision"], body["status"], body["tier"]) == ("hold", "held", 2)
+    assert body["lane"] == "individual"
     assert [x["code"] for x in body["reasons"]] == [
         "new_payee",
         "amount_above_25_lakh",
         "instruction_by_chat",
+        "new_payee_large",  # the company-level hierarchy rule
     ]
+    assert body["decision_trace"]["rules"][0]["path"] == "Acme Group > Acme Engineering"
     decided = events(rt, "intent.decided")[0]
-    assert decided["data"]["approvers"] == ["cfo@acme.example", "md@acme.example"]
+    assert decided["data"]["approvers"] == ["controller@acme.example"]
+    assert decided["data"]["lane"] == "individual"
     assert decided["actor"] == {"type": "service", "id": "policy-engine"}
     created = events(rt, "intent.created")[0]
     assert created["data"]["payee_account_last4"] == "9032"
@@ -272,7 +277,9 @@ def test_get_intent_matches_contract(env):
     assert_shape(body, "PaymentIntent")
     assert_shape(body["payee"], "Payee")
     assert body["amount_paise"] == "465000000" and body["payer_account_last4"] == "4521"
-    assert body["approvers"] == ["cfo@acme.example", "md@acme.example"]
+    assert body["approvers"] == ["controller@acme.example"]
+    assert body["lane"] == "individual" and body["department_id"] == "org_acme_ap"
+    assert_shape(body["payee_checks"], "PayeeChecks")
 
 
 def test_get_unknown_intent_is_404(env):
@@ -297,18 +304,21 @@ def add_device(rt, email, device_id, token="tok", revoked=False):
         )
 
 
-def test_held_payment_reaches_each_approvers_list(env):
+TIER3 = "1500000000"  # Rs 1.5 crore: the group's "above Rs 1 crore" rule makes it tier 3
+
+
+def test_tier_3_payment_reaches_the_cfo_and_the_md(env):
     client, _, _ = env
-    intent_id = post_intent(
-        client, payee_vendor_id="vd_global_trade", amount_paise="465000000"
-    ).json()["intent_id"]
+    intent_id = post_intent(client, payee_vendor_id="vd_global_trade", amount_paise=TIER3).json()[
+        "intent_id"
+    ]
     for who in ("cfo", "md"):
         r = client.get("/v1/approvals?status=pending", headers=as_user(who))
         assert r.status_code == 200
         items = r.json()["approvals"]
         assert len(items) == 1
         assert_shape(items[0], "ApprovalSummary")
-        assert items[0]["intent_id"] == intent_id and items[0]["tier"] == 2
+        assert items[0]["intent_id"] == intent_id and items[0]["tier"] == 3
         assert items[0]["payee_name_at_bank"] == "Global Trade Solutions"
     assert client.get("/v1/approvals", headers=as_user("controller")).json()["approvals"] == []
 
@@ -321,37 +331,44 @@ def test_released_payment_creates_no_approvals(env):
 
 def test_approvals_are_riskiest_first(env):
     client, _, _ = env
-    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise=paise_lakh(1))  # tier 1
+    # The Controller delegates to the CFO, so the CFO gets the tier 2 too.
+    r = client.post(
+        "/v1/_local/delegations",
+        json={"delegate_email": "cfo@acme.example"},
+        headers=as_user("controller"),
+    )
+    assert r.status_code == 200, r.text
     post_intent(client, payee_vendor_id="vd_global_trade", amount_paise="465000000")  # tier 2
+    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise=TIER3)  # tier 3
     tiers = [
         a["tier"] for a in client.get("/v1/approvals", headers=as_user("cfo")).json()["approvals"]
     ]
-    assert tiers == [2, 1]
+    assert tiers == [3, 2]
 
 
 def test_pending_approval_expires_after_24_hours(env):
     client, _, clock = env
-    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise=paise_lakh(1))
+    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise="465000000")
     clock.t = NOON + timedelta(hours=24)
-    cfo = as_user("cfo")
-    assert client.get("/v1/approvals?status=pending", headers=cfo).json()["approvals"] == []
-    assert len(client.get("/v1/approvals?status=expired", headers=cfo).json()["approvals"]) == 1
+    who = as_user("controller")
+    assert client.get("/v1/approvals?status=pending", headers=who).json()["approvals"] == []
+    assert len(client.get("/v1/approvals?status=expired", headers=who).json()["approvals"]) == 1
 
 
 def test_push_goes_to_enrolled_phones_only_and_carries_ids_only(env):
     client, rt, _ = env
-    add_device(rt, "cfo@acme.example", "dv_cfo_pixel")
-    add_device(rt, "cfo@acme.example", "dv_cfo_old", revoked=True)
-    add_device(rt, "md@acme.example", "dv_md_notoken", token=None)
+    add_device(rt, "controller@acme.example", "dv_ctrl_pixel")
+    add_device(rt, "controller@acme.example", "dv_ctrl_old", revoked=True)
+    add_device(rt, "ap.manager@acme.example", "dv_apm_notoken", token=None)
     intent_id = post_intent(
         client, payee_vendor_id="vd_global_trade", amount_paise="465000000"
     ).json()["intent_id"]
     sent = rt.notifier.sent
-    assert [m["device_id"] for m in sent] == ["dv_cfo_pixel"]
+    assert [m["device_id"] for m in sent] == ["dv_ctrl_pixel"]
     assert set(sent[0]) == {"device_id", "type", "approval_id", "intent_id"}
     assert sent[0]["type"] == "approval_waiting" and sent[0]["intent_id"] == intent_id
     step = rt.read_model.get_document(f"holds/{intent_id}/steps", "04")
-    assert step["step"] == "pushed" and "cfo@acme.example" in step["detail"]
+    assert step["step"] == "pushed" and "controller@acme.example" in step["detail"]
 
 
 def test_no_pushed_step_when_no_phone_took_it(env):
@@ -372,7 +389,7 @@ def test_approvals_list_needs_sign_in(env):
 
 
 def held_for_cfo_and_md(client):
-    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise="465000000")
+    post_intent(client, payee_vendor_id="vd_global_trade", amount_paise=TIER3)
     cfo = client.get("/v1/approvals?status=pending", headers=as_user("cfo")).json()["approvals"][0]
     md = client.get("/v1/approvals?status=pending", headers=as_user("md")).json()["approvals"][0]
     return cfo, md

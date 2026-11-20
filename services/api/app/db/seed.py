@@ -14,7 +14,77 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.engine import unit_of_work
-from app.db.models import Approver, Company, Policy, Vendor, VendorBankAccount
+from app.db.models import (
+    Approver,
+    Company,
+    OrgNode,
+    OrgRule,
+    Policy,
+    Vendor,
+    VendorBankAccount,
+)
+
+# ---- M2+ organisation tree ------------------------------------------------------------
+# node_id, parent, kind, name, settings, rules [(code, text, CEL, min_tier, hard_flag)]
+ORG = [
+    (
+        "org_acme_group",
+        None,
+        "group",
+        "Acme Group",
+        {},
+        [
+            (
+                "very_large",
+                "Above Rupees 1 crore: two people and a call-back.",
+                "payment.amount_paise > 1000000000",
+                3,
+                False,
+            ),
+        ],
+    ),
+    (
+        "org_acme",
+        "org_acme_group",
+        "company",
+        "Acme Engineering",
+        {},
+        [
+            (
+                "new_payee_large",
+                "A new payee above Rupees 10 lakh needs a Controller.",
+                "payment.payee.is_new && payment.amount_paise > 100000000",
+                2,
+                True,
+            ),
+        ],
+    ),
+    (
+        "org_acme_chennai",
+        "org_acme",
+        "plant",
+        "Chennai plant",
+        {"approval_windows_ist": ["11:00", "16:00"]},
+        [],
+    ),
+    ("org_acme_ap", "org_acme_chennai", "department", "Accounts payable", {}, []),
+    (
+        "org_acme_treasury",
+        "org_acme_chennai",
+        "department",
+        "Treasury",
+        {"tier1_paise": 20000000},
+        [],
+    ),
+]
+
+# email, level, node. The M2 approvers gain a level and a place in the tree.
+LEVELS = [
+    ("ap.manager@acme.example", 1, "org_acme_ap"),
+    ("controller@acme.example", 2, "org_acme_chennai"),
+    ("cfo@acme.example", 3, "org_acme"),
+    ("md@acme.example", 4, "org_acme_group"),
+]
 
 POLICY_2026_11_1 = {
     "version": "2026.11.1",
@@ -52,6 +122,7 @@ POLICY_2026_11_1 = {
 }
 
 APPROVERS = [
+    ("apr_apm", "ap.manager@acme.example", "Meena Krishnan", "AP Manager"),
     ("apr_cfo", "cfo@acme.example", "Priya Raman", "CFO"),
     ("apr_md", "md@acme.example", "Arjun Mehta", "MD"),
     ("apr_ctrl", "controller@acme.example", "Kavya Iyer", "Controller"),
@@ -156,4 +227,61 @@ def seed_if_empty(sessions: sessionmaker[Session], company_id: str = "co_acme") 
                 published_at=datetime.fromisoformat(POLICY_2026_11_1["published_at"]),
             )
         )
+    seed_m2plus_if_missing(sessions, company_id)
+    return True
+
+
+def seed_m2plus_if_missing(sessions: sessionmaker[Session], company_id: str = "co_acme") -> bool:
+    """The M2+ organisation tree, its rules, and approver levels. Separate from the
+    M2 seed so a local database made before M2+ gains them too."""
+    with unit_of_work(sessions) as s:
+        if s.get(OrgNode, ORG[0][0]) is not None:
+            return False
+        if s.get(Company, company_id) is None:
+            return False
+        now = datetime.now(timezone.utc)
+        for node_id, parent, kind, name, settings, rules in ORG:
+            s.add(
+                OrgNode(
+                    node_id=node_id,
+                    parent_id=parent,
+                    kind=kind,
+                    name=name,
+                    company_id=None if kind == "group" else company_id,
+                    settings=settings,
+                    created_at=now,
+                )
+            )
+            s.flush()
+            for code, text, expression, min_tier, hard in rules:
+                s.add(
+                    OrgRule(
+                        rule_id=f"rl_{code}",
+                        node_id=node_id,
+                        code=code,
+                        text=text,
+                        expression=expression,
+                        min_tier=min_tier,
+                        hard_flag=hard,
+                        enabled=True,
+                        created_at=now,
+                    )
+                )
+        s.flush()
+        for email, level, node_id in LEVELS:
+            approver = s.scalar(select(Approver).where(Approver.email == email))
+            if approver is None:
+                # A database seeded before M2+ lacks the AP Manager; add whoever is missing.
+                approver_id, _, name, role = next(a for a in APPROVERS if a[1] == email)
+                approver = Approver(
+                    approver_id=approver_id,
+                    company_id=company_id,
+                    email=email,
+                    display_name=name,
+                    role=role,
+                    active=True,
+                    created_at=now,
+                )
+                s.add(approver)
+            approver.level, approver.node_id = level, node_id
     return True
