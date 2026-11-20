@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     ANDROID_SIGNING_SHA256: str = "3313d44bb45e66849411470eeffa85a49a66bc9d1a9718a2463b98898d93d968"
     VERSION: str = get_git_short_sha()
 
+    # M2 (Danish). The system of record: AlloyDB (PostgreSQL) in the cloud, e.g.
+    # postgresql+psycopg://user:pass@host/pramaan. When unset and ENV=local, a SQLite
+    # file in the gitignored .local/ directory is used instead.
+    DATABASE_URL: str | None = None
+    # Single tenant for the buildathon; every intent belongs to this company.
+    COMPANY_ID: str = "co_acme"
+    # How long an approver has to decide before the approval expires.
+    APPROVAL_TTL_HOURS: int = 24
+
 
 @lru_cache
 def get_settings() -> Settings:
