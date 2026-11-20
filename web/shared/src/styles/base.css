@@ -732,3 +732,45 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------- radios and JSON */
+
+.pr-radio {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pr-space-2);
+  padding: var(--pr-space-1) 0;
+  font-size: calc(var(--pr-text-sm) * var(--pr-scale));
+  cursor: pointer;
+}
+
+.pr-radio input {
+  accent-color: var(--pr-brand);
+  /* A 48dp-equivalent target: a mis-tap here changes the risk assessment. */
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+}
+
+fieldset.pr-field {
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius);
+  padding: var(--pr-space-3) var(--pr-space-4);
+  margin: 0;
+}
+
+fieldset.pr-field legend {
+  padding: 0 var(--pr-space-2);
+}
+
+.pr-json {
+  margin: 0;
+  padding: var(--pr-space-3);
+  background: var(--pr-surface-sunken);
+  border: 1px solid var(--pr-border);
+  border-radius: var(--pr-radius);
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
+  word-break: normal;
+}
