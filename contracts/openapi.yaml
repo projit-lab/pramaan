@@ -1893,27 +1893,6 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ApprovalEvidence'
             - type: 'null'
-        lane:
-          oneOf:
-            - $ref: '#/components/schemas/Lane'
-            - type: 'null'
-          description: M2+. Null until the lane sorter has run.
-        rule_hit:
-          oneOf:
-            - $ref: '#/components/schemas/RuleHit'
-            - type: 'null'
-          description: M2+. The rule that decided this payment, and its path in the tree.
-        payee_checks:
-          oneOf:
-            - $ref: '#/components/schemas/PayeeCheck'
-            - type: 'null'
-          description: M2+. The automatic checks run before any approver saw it.
-        standing_mandate_id:
-          type: [string, 'null']
-          description: M2+. Set when a standing mandate auto-released this payment.
-        batch_id:
-          type: [string, 'null']
-          description: M2+. Set when this payment was approved as part of a batch.
         mandate_id:
           type: [string, 'null']
         agent_request_id:
@@ -2451,19 +2430,6 @@ components:
     # Prajit owns the two signed formats below. They are carried here as the
     # fields the screens must display, not as a definition of what is signed.
     # ---------------------------------------------------------------------
-    Lane:
-      type: string
-      description: |
-        Which lane a payment was sorted into. First matching row wins, so
-        nothing slips into a lighter lane:
-
-          1. individual_review - any hard flag, or Tier 2 or 3
-          2. auto_release_standing - known payee inside a valid standing mandate
-          3. auto_release - Tier 0, known payee, no flags
-          4. batch - Tier 1, every check passed, no flags
-
-        The order matters and is the engine's contract, not a display choice.
-      enum: [individual_review, auto_release_standing, auto_release, batch]
     RuleHit:
       type: object
       description: |
@@ -2490,46 +2456,6 @@ components:
           description: |
             When a child node tightened a parent's rule, the parent node id.
             Loosening is rejected by the engine, so this is only ever a tighten.
-    OrgNode:
-      type: object
-      description: |
-        One node of the organisation tree: group, company, plant or department.
-        Read by the policy editor, which shows inherited rules greyed out and
-        blocks an edit that would loosen a parent.
-      required: [node_id, name, kind]
-      properties:
-        node_id:
-          type: string
-        parent_id:
-          type: [string, 'null']
-        name:
-          type: string
-        kind:
-          type: string
-          enum: [group, company, plant, department]
-        rules:
-          type: array
-          items:
-            type: object
-            required: [rule_id, expression]
-            properties:
-              rule_id:
-                type: string
-              expression:
-                type: string
-                description: CEL, the expression language Cloud IAM Conditions use.
-              text:
-                type: string
-                description: The same rule in plain language, for the screen.
-              tier:
-                $ref: '#/components/schemas/Tier'
-              inherited_from:
-                type: [string, 'null']
-                description: Null when this node set it; otherwise the ancestor that did.
-        thresholds_paise:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/Paise'
     ApproverLevel:
       type: string
       description: |
