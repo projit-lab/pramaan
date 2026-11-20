@@ -79,6 +79,31 @@ export interface ModelArmorFinding {
 export type Decision = 'approve' | 'decline' | 'report_fraud';
 
 /**
+ * One field Gemini read off an invoice, beside what the vendor master says.
+ *
+ * `mismatch` is decided by a rule, not by the model. Gemini extracts; code
+ * compares. The red on screen is a rule's output even though the text beside it
+ * was read by a model.
+ */
+export interface InvoiceField {
+  /** What Gemini read. Null when it could not find the field at all. */
+  extracted?: string | null;
+  /** What the vendor master says. */
+  onRecord?: string | null;
+  mismatch?: boolean;
+}
+
+/** holds/{intentId}.invoice */
+export interface InvoiceExtraction {
+  source: 'gemini';
+  modelVersion?: string | null;
+  /** A signed Cloud Storage URL for the preview, or null when there is none. */
+  fileUrl?: string | null;
+  ref?: string | null;
+  fields: Record<string, InvoiceField>;
+}
+
+/**
  * holds/{intentId}.approval
  *
  * What signed a payment, and what the device looked like when it did. The
@@ -125,6 +150,7 @@ export interface Hold {
   reasons: Reason[];
   explanation?: Explanation | null;
   modelArmorFinding?: ModelArmorFinding | null;
+  invoice?: InvoiceExtraction | null;
   policyVersion?: string | null;
   approvers?: string[];
   approver?: string | null;

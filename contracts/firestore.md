@@ -59,6 +59,7 @@ payment status.
 | `reasons` | array of map | `{ code, text, source, changedFrom?, changedTo? }` |
 | `explanation` | map or null | `{ text, source: "gemini", modelVersion }` |
 | `modelArmorFinding` | map or null | `{ category, detail, excerpt, foundAt }` |
+| `invoice` | map or null | what Gemini read out of the invoice, beside the vendor master; see below |
 | `policyVersion` | string or null | |
 | `approvers` | array of string | work emails from the approval matrix |
 | `approver` | string or null | who actually decided |
@@ -72,6 +73,33 @@ payment status.
 
 Indexes the console needs: `status` ascending with `createdAt` descending, and
 `tier` descending with `createdAt` descending (the board sorts by risk).
+
+### `holds/{intentId}.invoice`
+
+**Added in M3 by Shoaib, needs Prajit's approval.** The console's invoice panel
+shows the invoice beside the fields Gemini read from it, with anything that
+disagrees with the vendor master highlighted. That comparison is the demo's
+fourth moment, and it needs both halves in the read model.
+
+| Field | Type | Notes |
+| :--- | :--- | :--- |
+| `source` | string | always `gemini`; the panel carries the AI-written label |
+| `modelVersion` | string or null | which model read it |
+| `fileUrl` | string or null | a signed Cloud Storage URL for the preview, or null |
+| `ref` | string or null | the invoice number as printed on the document |
+| `fields` | map | field name to `{ extracted, onRecord, mismatch }` |
+
+Each entry in `fields` carries what Gemini read (`extracted`), what the vendor
+master says (`onRecord`), and whether they disagree (`mismatch`). Expected field
+names: `vendor_name`, `gstin`, `account`, `ifsc`, `amount_paise`, `invoice_number`,
+`invoice_date`.
+
+**`mismatch` is decided by a rule, not by the model.** Gemini extracts; code
+compares. The panel renders `mismatch: true` in red, and that red is a rule's
+output even though the text beside it was read by a model.
+
+`extracted` may be null when the model could not find a field. That is not a
+mismatch, and the panel says "not found on the invoice" rather than flagging it.
 
 ### `holds/{intentId}.approval`
 
