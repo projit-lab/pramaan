@@ -1,0 +1,38 @@
+{
+  "name": "@pramaan/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Firebase init, auth and the role gate, live Firestore hooks, the generated API client, formatting helpers and the components every Pramaan web app shares.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles/*": "./src/styles/*",
+    "./components/*": "./src/components/*.tsx",
+    "./format/*": "./src/format/*.ts",
+    "./types/*": "./src/types/*.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "firebase": "^13.4.0",
+    "openapi-fetch": "^0.17.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^31.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  }
+}
