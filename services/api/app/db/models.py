@@ -341,6 +341,9 @@ class Batch(Base):
     status: Mapped[str] = mapped_column(String(10))  # pending, decided, expired
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Prajit's signed batch format: the line hashes the signed summary binds.
+    line_hashes: Mapped[list[str] | None] = mapped_column(JsonType)
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Policy(Base):

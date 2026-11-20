@@ -20,3 +20,7 @@ Pramaan holds a company's risky payments until the real approver signs that exac
 | `.agents/skills/` | Prajit & Shoaib | Custom Antigravity skills for developer and agent workflows |
 
 For contribution guidelines, branch standards, and code review policies, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Running the demo
+
+See [docs/demo-runbook.md](docs/demo-runbook.md) for every start command and demo step.

@@ -54,6 +54,6 @@ class FirestoreReadModel:
 
 
 def get_read_model(settings: Settings):
-    if settings.ENV == "local":
+    if settings.ENV == "local" and not settings.USE_FIRESTORE_IN_LOCAL:
         return InMemoryReadModel()
     return FirestoreReadModel(settings)

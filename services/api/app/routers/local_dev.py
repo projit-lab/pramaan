@@ -17,9 +17,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.db.engine import unit_of_work
-from app.db.models import Delegation, PaymentIntent, StandingMandate, Vendor
+from app.db.models import Batch, Delegation, PaymentIntent, StandingMandate, Vendor
 from app.domain.ids import new_id
 from app.domain.models import AuthenticatedUser
 from app.domain.money import parse_paise
@@ -155,3 +156,27 @@ def local_tamper_intent(
             intent.payee_account = "9999999999"
         intent.updated_at = utc_now(rt)
         return {"intent_id": intent.intent_id, "payee_account": intent.payee_account}
+
+
+class LocalAssign(BaseModel):
+    approver_email: str
+
+
+@router.post("/_local/batches/{batch_id}/assign")
+def local_assign_batch(
+    batch_id: str,
+    body: LocalAssign,
+    rt: Runtime = Depends(get_runtime),
+    _u: AuthenticatedUser = Depends(require_roles("finance")),
+):
+    """Demo only: hand a batch to the approver whose phone is on stage."""
+    if rt.settings.ENV != "local":
+        raise ProblemException(404, "Not found", "Route only available when ENV=local.")
+    with unit_of_work(rt.sessions) as s:
+        batch = s.get(Batch, batch_id, with_for_update=True)
+        if batch is None or batch.status != "pending":
+            raise ProblemException(404, "Not found", f"No pending batch '{batch_id}'.")
+        batch.approver_email = body.approver_email
+        for i in s.scalars(select(PaymentIntent).where(PaymentIntent.batch_id == batch_id)):
+            i.approvers = [body.approver_email]
+        return {"batch_id": batch_id, "approver": body.approver_email}

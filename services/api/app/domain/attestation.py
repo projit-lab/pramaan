@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 KEY_DESCRIPTION_OID = "1.3.6.1.4.1.11129.2.1.17"
 STATUS_URL = "https://android.googleapis.com/attestation/status"
+RETRY_AFTER_SECONDS = 60
 ROOTS_DIR = Path(__file__).resolve().parent / "attestation_roots"
 
 # Keymaster / KeyMint tag IDs
@@ -76,16 +77,24 @@ class AttestationResult:
 
 
 class RevocationList:
-    """Manages the Android attestation status / revocation list."""
+    """Manages the Android attestation status / revocation list.
+
+    The live list is fetched from Google and cached (24 hours by default). When a fetch
+    fails, the last good copy keeps being used. With ``fail_closed`` and no good copy
+    at all, every check raises ``AttestationError`` instead of passing, so an outage of
+    the list can never let a revoked key enrol.
+    """
 
     def __init__(
         self,
         cache_ttl_seconds: int = 86400,
         entries: dict[str, Any] | None = None,
         status_url: str = STATUS_URL,
+        fail_closed: bool = False,
     ) -> None:
         self.cache_ttl_seconds = cache_ttl_seconds
         self.status_url = status_url
+        self.fail_closed = fail_closed
         self._entries: dict[str, Any] | None = entries
         self._last_fetched: float = time.time() if entries is not None else 0.0
 
@@ -106,8 +115,16 @@ class RevocationList:
                 self._last_fetched = time.time()
         except Exception as exc:
             logger.warning("Failed to fetch attestation status from %s: %s", self.status_url, exc)
+            if self._entries is None and self.fail_closed:
+                raise AttestationError(
+                    "revocation_list_unavailable",
+                    "Could not fetch Google's attestation revocation list; try again.",
+                ) from exc
             if self._entries is None:
                 self._entries = {}
+            # Keep what we have, but try again in a minute rather than on every
+            # certificate of every chain (each failed fetch can take the full timeout).
+            self._last_fetched = time.time() - self.cache_ttl_seconds + RETRY_AFTER_SECONDS
 
     def is_revoked(self, serial: str | int) -> bool:
         """Check if certificate serial (lowercase hex) is revoked or suspended."""

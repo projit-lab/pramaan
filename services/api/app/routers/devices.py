@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import secrets
+import threading
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.config import Settings
 from app.db.engine import unit_of_work
 from app.db.models import Device, EnrolmentChallenge
 from app.domain.attestation import AttestationError, RevocationList, verify_attestation
@@ -27,6 +29,25 @@ from app.runtime import Runtime, get_runtime, utc_now
 from app.services.views import aware, ist
 
 router = APIRouter(tags=["devices"])
+
+_revocation_lock = threading.Lock()
+_revocation_lists: dict[bool, RevocationList] = {}
+
+
+def get_revocation_list(settings: Settings) -> RevocationList:
+    """The process-wide live revocation list, shared so its 24 h cache is reused.
+
+    Tests replace this function; ATTEST_REVOCATION_LIVE=false gives an empty list.
+    """
+    if not settings.ATTEST_REVOCATION_LIVE:
+        return RevocationList(entries={})
+    fail_closed = settings.ENV != "local"
+    with _revocation_lock:
+        rl = _revocation_lists.get(fail_closed)
+        if rl is None:
+            rl = RevocationList(fail_closed=fail_closed)
+            _revocation_lists[fail_closed] = rl
+        return rl
 
 
 class EnrolDeviceIn(BaseModel):
@@ -134,8 +155,8 @@ def enrol_device(
                 ) from exc
 
         # Verify attestation
-        revocation = RevocationList(entries={})
         try:
+            revocation = get_revocation_list(rt.settings)
             result = verify_attestation(
                 chain_der=chain_der,
                 expected_challenge=expected_challenge_bytes,
@@ -169,6 +190,25 @@ def enrol_device(
         patch_year = result.os_patch_level // 100
         patch_month = result.os_patch_level % 100
         patch_level_str = f"{patch_year:04d}-{patch_month:02d}-01"
+
+        # Key-device correlation: one hardware key belongs to one approver. The same
+        # attested key showing up under a second approver means a shared or cloned
+        # enrolment, so refuse it rather than let one phone sign for two people.
+        other = s.scalar(
+            select(Device).where(
+                Device.public_key_pem == pubkey_pem,
+                Device.approver_email != user.email,
+                Device.revoked.is_(False),
+            )
+        )
+        if other is not None:
+            raise ProblemException(
+                409,
+                "This key is already enrolled",
+                "This phone's key is enrolled for another approver. Each approver "
+                "enrols their own phone.",
+                type_="https://pramaan.example/problems/key-already-enrolled",
+            )
 
         # Check existing device or generate new
         device = s.scalar(
