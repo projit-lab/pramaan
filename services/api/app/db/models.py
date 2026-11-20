@@ -129,6 +129,9 @@ class PaymentIntent(Base):
     __table_args__ = (
         CheckConstraint("amount_paise > 0", name="amount_positive"),
         CheckConstraint("tier BETWEEN 0 AND 3", name="tier_range"),
+        CheckConstraint(
+            "entry_route IN ('erp', 'bank_file', 'payout_api', 'agent')", name="entry_route_known"
+        ),
         Index("ix_payment_intents_status_created", "status", "created_at"),
         Index("ix_payment_intents_payee_account", "payee_account"),
     )
@@ -148,6 +151,8 @@ class PaymentIntent(Base):
     purpose: Mapped[str | None] = mapped_column(String(200))
     invoice_sha256: Mapped[str | None] = mapped_column(String(64))
     instruction_channel: Mapped[str] = mapped_column(String(10))
+    # The system the payment came in through: erp, bank_file, payout_api, agent.
+    entry_route: Mapped[str] = mapped_column(String(12))
     instruction_note: Mapped[str | None] = mapped_column(Text)
     initiator_type: Mapped[str] = mapped_column(String(10))
     initiator_id: Mapped[str] = mapped_column(String(254))

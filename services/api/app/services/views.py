@@ -133,6 +133,7 @@ def intent_view(i: PaymentIntent) -> dict[str, Any]:
         "mandate_id": i.mandate_id,
         # M2+
         "department_id": i.department_id,
+        "entry_route": i.entry_route,
         "lane": i.lane,
         "decision_trace": i.decision_trace,
         "payee_checks": i.payee_checks,

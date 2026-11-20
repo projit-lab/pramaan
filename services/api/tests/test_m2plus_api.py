@@ -120,6 +120,61 @@ def test_unknown_or_non_department_node_is_422(env):
         assert r.status_code == 422 and r.json()["errors"][0]["field"] == "department_id"
 
 
+# ---- entry route ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kw,route",
+    [
+        ({}, "erp"),
+        (
+            {
+                "instruction_channel": "agent",
+                "initiator": {"type": "agent", "id": "payables-agent-01"},
+            },
+            "agent",
+        ),
+        ({"entry_route": "bank_file"}, "bank_file"),
+        ({"entry_route": "payout_api"}, "payout_api"),
+    ],
+)
+def test_entry_route_is_stored_and_defaults_from_the_initiator(env, kw, route):
+    client, rt, _ = env
+    intent_id = lane_of(client, **kw)["intent_id"]
+    intent = client.get(f"/v1/intents/{intent_id}", headers=CLERK).json()
+    assert intent["entry_route"] == route
+    created = [e for e in rt.event_bus.events if e["event_type"] == "intent.created"][-1]
+    assert created["data"]["entry_route"] == route
+
+
+def test_unknown_entry_route_is_422(env):
+    client, _, _ = env
+    r = post_intent(client, entry_route="fax")
+    assert r.status_code == 422 and any("entry_route" in e["field"] for e in r.json()["errors"])
+
+
+def test_rules_can_use_the_entry_route(env):
+    client, _, _ = env
+    r = client.put(
+        "/v1/org/nodes/org_acme_ap",
+        headers=FINANCE,
+        json={
+            "rules": [
+                {
+                    "code": "bank_file_reviewed",
+                    "text": "Bank-file payments are always reviewed.",
+                    "expression": "payment.entry_route == 'bank_file'",
+                    "min_tier": 1,
+                    "hard_flag": True,
+                }
+            ]
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert lane_of(client, entry_route="bank_file")["lane"] == "individual"
+    assert lane_of(client)["lane"] == "auto_release"
+
+
 # ---- approver levels -----------------------------------------------------------------------
 
 
