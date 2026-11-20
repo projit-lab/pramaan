@@ -26,6 +26,11 @@ export interface PramaanEnv {
   demoMode: boolean;
   /** Where the public sandbox bank page reads payouts from. */
   payoutsSource: PayoutsSource;
+  /**
+   * Base URL of the public mandate verifier, so the console can link a mandate
+   * out to it. A separate hosting site, hence a separate value.
+   */
+  verifyBase: string;
   firebase: FirebaseWebConfig;
   emulator: {
     authUrl: string;
@@ -84,11 +89,12 @@ export function readEnv(overrides: RawEnv = {}): PramaanEnv {
     apiBase: text(raw, 'VITE_API_BASE', 'http://127.0.0.1:4010').replace(/\/+$/, ''),
     demoMode: flag(raw, 'VITE_DEMO_MODE', useEmulators),
     payoutsSource,
+    verifyBase: text(raw, 'VITE_VERIFY_BASE', 'http://localhost:5175').replace(/\/+$/, ''),
     firebase: {
       // On emulators a placeholder key is enough: the Auth emulator does not check it.
       apiKey: text(raw, 'VITE_FIREBASE_API_KEY', useEmulators ? 'emulator-api-key' : ''),
       authDomain: text(raw, 'VITE_FIREBASE_AUTH_DOMAIN', useEmulators ? 'localhost' : ''),
-      projectId: text(raw, 'VITE_FIREBASE_PROJECT_ID', 'pramaan-dev'),
+      projectId: text(raw, 'VITE_FIREBASE_PROJECT_ID', 'pramaan-dev-515306'),
       storageBucket: text(raw, 'VITE_FIREBASE_STORAGE_BUCKET'),
       messagingSenderId: text(raw, 'VITE_FIREBASE_MESSAGING_SENDER_ID'),
       appId: text(raw, 'VITE_FIREBASE_APP_ID'),

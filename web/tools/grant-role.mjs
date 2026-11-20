@@ -13,7 +13,7 @@
  *   node tools/grant-role.mjs --email cfo@acme.example --role finance
  *   node tools/grant-role.mjs --email clerk@acme.example --role clerk
  *   node tools/grant-role.mjs --email ops@acme.example --role none      (revoke)
- *   node tools/grant-role.mjs --email you@example.com --role finance --real --project pramaan-dev
+ *   node tools/grant-role.mjs --email you@example.com --role finance --real --project pramaan-dev-515306
  *   node tools/grant-role.mjs --list
  *
  * Against a real project it uses your own gcloud credentials
@@ -56,12 +56,12 @@ Grant a Pramaan role to a Google account.
   --email <address>   the account to change
   --role  <role>      ${ROLES.join(' | ')} | none
   --list              list every account that has a role
-  --project <id>      Google Cloud project id (default: $GCLOUD_PROJECT or pramaan-dev)
+  --project <id>      Google Cloud project id (default: $GCLOUD_PROJECT or pramaan-dev-515306)
   --real              act on the real project instead of the Auth emulator
 
 Examples
   node tools/grant-role.mjs --email cfo@acme.example --role finance
-  node tools/grant-role.mjs --email you@example.com --role finance --real --project pramaan-dev
+  node tools/grant-role.mjs --email you@example.com --role finance --real --project pramaan-dev-515306
 `);
 }
 
@@ -72,7 +72,7 @@ if (args.help) {
   process.exit(0);
 }
 
-const projectId = args.project ?? process.env.GCLOUD_PROJECT ?? 'pramaan-dev';
+const projectId = args.project ?? process.env.GCLOUD_PROJECT ?? 'pramaan-dev-515306';
 
 if (!args.real) {
   // The Admin SDK talks to the emulator purely through this variable.

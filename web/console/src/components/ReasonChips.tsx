@@ -1,40 +1,63 @@
 /**
  * The reasons a payment was held, as chips.
  *
- * A reason that records a change shows what it changed from and to, with the
- * change in red, because "bank details changed three days ago" is the sentence
- * that saves the money.
+ * Written by rules, never by Gemini. A reason that records a change gets the
+ * ChangedField treatment instead: old struck through, arrow, new, on a soft red
+ * card. That is the single most important element on an approval screen,
+ * because the fake-invoice scam works by changing bank details.
  */
 
-import { ReasonSourceTag, type Reason } from '@pramaan/shared';
+import { Icon, type Reason, reasonIcon } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 
 export function ReasonChips({
   reasons,
-  showSource = false,
+  showCodes = false,
 }: {
   reasons: Reason[];
-  showSource?: boolean;
+  /** The console may show the rule code in mono for finance staff. */
+  showCodes?: boolean;
 }): ReactNode {
   if (reasons.length === 0) {
-    return <span className="pr-muted">No rules matched</span>;
+    return <span className="pm-muted">No rules matched</span>;
   }
 
+  const changed = reasons.filter((reason) => reason.changedFrom || reason.changedTo);
+  const plain = reasons.filter((reason) => !reason.changedFrom && !reason.changedTo);
+
   return (
-    <ul className="pr-reasons">
-      {reasons.map((reason) => (
-        <li key={reason.code} className="pr-reason">
-          <span>{reason.text}</span>
-          {reason.changedFrom || reason.changedTo ? (
-            <span className="pr-reason__change">
-              {reason.changedFrom ? <s>{reason.changedFrom}</s> : null}
-              {reason.changedFrom && reason.changedTo ? ' → ' : null}
-              {reason.changedTo ? <strong>{reason.changedTo}</strong> : null}
+    <div className="pm-stack">
+      {changed.map((reason) => (
+        <div className="pm-changed" key={reason.code}>
+          <Icon name="warning" fill />
+          <div className="pm-changed__body">
+            <span className="pm-changed__title">{reason.text}</span>
+            <span className="pm-changed__vals">
+              {reason.changedFrom ? (
+                <span className="pm-changed__old">{reason.changedFrom}</span>
+              ) : null}
+              {reason.changedFrom && reason.changedTo ? (
+                <Icon name="arrow_forward" size="sm" />
+              ) : null}
+              {reason.changedTo ? (
+                <span className="pm-changed__new">{reason.changedTo}</span>
+              ) : null}
             </span>
-          ) : null}
-          {showSource ? <ReasonSourceTag source={reason.source} /> : null}
-        </li>
+          </div>
+        </div>
       ))}
-    </ul>
+
+      {plain.length > 0 ? (
+        <div className="pm-row">
+          {plain.map((reason) => (
+            <span className="pm-reason" key={reason.code}>
+              <Icon name={reasonIcon(reason.code)} size="sm" />
+              {reason.text}
+              {showCodes ? <b>{reason.code}</b> : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

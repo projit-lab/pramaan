@@ -148,9 +148,9 @@ needs are documented at the top of that file.
 Three Firebase Hosting sites are expected, named in `../.firebaserc`:
 
 ```bash
-firebase hosting:sites:create pramaan-dev-console
-firebase hosting:sites:create pramaan-dev-erp
-firebase hosting:sites:create pramaan-dev-verify
+firebase hosting:sites:create pramaan-dev-515306-console
+firebase hosting:sites:create pramaan-dev-515306-erp
+firebase hosting:sites:create pramaan-dev-515306-verify
 ```
 
 ## What is not built yet

@@ -1,16 +1,17 @@
 /**
- * "No access": signed in with a Google account that does not carry the role this
- * app needs. The only way forward is to sign out, or to ask an administrator for
- * the role.
+ * "No access": signed in with a Google account that does not carry the role
+ * this app needs. The only way forward is to sign out, or to ask an
+ * administrator for the role.
  */
 
 import type { ReactNode } from 'react';
 import type { Role } from './AuthProvider';
-import { PramaanMark } from '../components/PramaanMark';
+import { Icon } from '../components/Icon';
+import { PramaanLockup } from '../components/PramaanMark';
 
 const ROLE_LABELS: Record<Role, string> = {
-  finance: 'finance team',
-  clerk: 'accounts clerk',
+  finance: 'finance',
+  clerk: 'clerk',
 };
 
 export interface NoAccessProps {
@@ -27,32 +28,28 @@ export function NoAccess({
   onSignOut,
 }: NoAccessProps): ReactNode {
   return (
-    <main className="pr-centred" aria-labelledby="noaccess-heading">
-      <div className="pr-card pr-card--narrow">
-        <PramaanMark />
-        <h1 id="noaccess-heading" className="pr-h1">
-          No access
-        </h1>
+    <main className="pm-centred" aria-labelledby="noaccess-heading">
+      <div className="pm-stack" style={{ maxWidth: 440, width: '100%' }}>
+        <PramaanLockup size={32} />
 
-        <p>
-          {email ? <strong>{email}</strong> : 'This account'} does not have access to
-          this app.
-        </p>
-
-        <p className="pr-muted">
-          {grantedRole
-            ? `It has the ${ROLE_LABELS[grantedRole]} role. This app needs the ${ROLE_LABELS[requiredRole]} role.`
-            : `It has no role yet. This app needs the ${ROLE_LABELS[requiredRole]} role.`}
-        </p>
-
-        <button type="button" className="pr-button" onClick={() => void onSignOut()}>
-          Sign out
-        </button>
-
-        <p className="pr-fineprint">
-          Ask an administrator to grant your account the {ROLE_LABELS[requiredRole]}{' '}
-          role, then sign in again.
-        </p>
+        <div className="pm-card pm-empty">
+          <span className="pm-empty__art">
+            <Icon name="lock" />
+          </span>
+          <div id="noaccess-heading" className="pm-heading" style={{ color: 'var(--ink)' }}>
+            You don&rsquo;t have access yet
+          </div>
+          <div>
+            Ask your admin to add {email ? <strong>{email}</strong> : 'this account'} as{' '}
+            {ROLE_LABELS[requiredRole]}.
+            {grantedRole ? ` It currently has the ${ROLE_LABELS[grantedRole]} role.` : ''}
+          </div>
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <button type="button" className="pm-btn pm-btn--outlined" onClick={() => void onSignOut()}>
+              Sign out
+            </button>
+          </div>
+        </div>
       </div>
     </main>
   );

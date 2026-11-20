@@ -8,6 +8,13 @@ Owner: Prajit and Shoaib (both).
 | File | What it is | Owner |
 | :--- | :--- | :--- |
 | `firestore-seed.json` | Seed for the Firestore emulator, following `contracts/firestore.md`. Loaded by `web/tools/seed-firestore.mjs`. | Shoaib |
+| `invoices/INV-2219.pdf` | The genuine Sri Lakshmi invoice, ₹9,80,000. Demo moment 2. | Shoaib |
+| `invoices/KAVERI-4471.pdf` | The poisoned Kaveri Steel invoice, ₹18,40,000, hiding an instruction to pay another account. Demo moment 4. | Shoaib |
+| `invoices/generate_invoices.py` | Regenerates both, so neither is a hand-edited binary. | Shoaib |
+
+See `invoices/README.md` before touching the poisoned one: the account printed on
+its face is deliberately **correct**, and only a hidden line redirects it. That is
+what makes the demo honest rather than a straw man.
 
 All names are fictional, per the build plan: Acme Auto Components Pvt Ltd, and the
 vendors Sri Lakshmi Castings, Kaveri Steel Traders, the look-alike Sri Laxmi
@@ -30,6 +37,4 @@ Two things about the seed are deliberate and should stay that way:
 | File | What it is | Owner | Milestone |
 | :--- | :--- | :--- | :--- |
 | `generate_history.py` | 24 months of payment history into BigQuery, so the anomaly check and the data agent have something real | Prajit | M2 |
-| `invoices/INV-2219.pdf` | The genuine Sri Lakshmi invoice, Rupees 9,80,000 | Shoaib with Prajit | M3 |
-| `invoices/KAVERI-4471.pdf` | The poisoned Kaveri Steel invoice, Rupees 18,40,000, hiding an instruction to pay another account | Shoaib with Prajit | M3 |
-| `bigquery/*.sql` | Ledger DDL and the `v_payments`, `v_holds`, `v_approvals` views | Prajit | M2, M4 |
+| `bigquery/*.sql` | Ledger DDL and the `v_payments`, `v_holds`, `v_approvals` views | Shoaib, per the 20 Nov rebalance | M4 |

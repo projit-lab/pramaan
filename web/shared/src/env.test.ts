@@ -13,7 +13,7 @@ describe('readEnv', () => {
     expect(env.useEmulators).toBe(true);
     expect(env.apiBase).toBe('http://127.0.0.1:4010');
     expect(env.payoutsSource).toBe('api');
-    expect(env.firebase.projectId).toBe('pramaan-dev');
+    expect(env.firebase.projectId).toBe('pramaan-dev-515306');
   });
 
   it('reads booleans from the strings an env file actually contains', () => {
@@ -51,7 +51,7 @@ describe('missingFirebaseConfig', () => {
         VITE_USE_EMULATORS: 'false',
         VITE_FIREBASE_API_KEY: '',
         VITE_FIREBASE_AUTH_DOMAIN: '',
-        VITE_FIREBASE_PROJECT_ID: 'pramaan-dev',
+        VITE_FIREBASE_PROJECT_ID: 'pramaan-dev-515306',
         VITE_FIREBASE_APP_ID: '',
       }),
     );

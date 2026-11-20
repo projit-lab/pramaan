@@ -31,6 +31,13 @@ export interface DecodedSummary {
     payee_name_at_bank?: string;
     payee_account_last4?: string;
     payee_ifsc?: string;
+    /**
+     * The flat names the agreed canonical payment summary actually uses; see
+     * contracts/canonical/vectors.json, which both Kotlin and Python must match.
+     * `payee_account` is the full account number, not the last four.
+     */
+    payee_name?: string;
+    payee_account?: string;
     amount_paise?: string | number;
     amountPaise?: string | number;
     amount?: string | number;
@@ -339,10 +346,16 @@ export async function verifyMandate(
     payee?.name_at_bank ??
     sData.payee_name_at_bank ??
     payee?.name ??
+    sData.payee_name ??
     '—';
+  // The canonical summary carries the FULL account in payee_account, but every
+  // screen shows only the last four, so narrow it here rather than letting a
+  // full account number reach a display that expects four digits.
+  const fullAccount = sData.payee_account ? String(sData.payee_account) : null;
   const accountLast4 =
     payee?.account_last4 ??
     sData.payee_account_last4 ??
+    (fullAccount && fullAccount.length >= 4 ? fullAccount.slice(-4) : null) ??
     '—';
   const ifsc =
     payee?.ifsc ??

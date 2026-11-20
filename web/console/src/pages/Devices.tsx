@@ -1,14 +1,11 @@
 /**
- * Devices, read-only.
+ * The phones that can sign an approval. Read-only.
  *
- * The Revoke button is disabled and says when it arrives, because revocation is
- * M5 and a button that looks live but does nothing is worse than no button.
+ * Revoking arrives in a later release, so the button is disabled and says so.
+ * A button that looks live but does nothing is worse than no button.
  *
- * The integrity verdict is the honesty case that matters here: a device with no
- * recorded verdict reads "couldn't verify", never a pass. Play Integrity only
- * recognises builds installed from a Play internal testing track, so until that
- * track exists there will be no verdicts at all, and this page must not imply
- * otherwise.
+ * The integrity verdict is the honesty case that matters here: a device with
+ * no recorded verdict reads "couldn't verify", never a pass.
  */
 
 import {
@@ -17,17 +14,37 @@ import {
   type Device,
   EmptyState,
   ErrorState,
+  Icon,
   LoadingState,
-  formatIstWithRelative,
+  StateBand,
+  formatIstDate,
   useLiveCollection,
 } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 
-function SecurityLevelBadge({ level }: { level: Device['keySecurityLevel'] }): ReactNode {
-  // StrongBox is the strongest, TEE is honest and common, Software is not
-  // acceptable for an approval and is shown as a problem.
-  const tone = level === 'StrongBox' ? 'green' : level === 'TrustedEnvironment' ? 'blue' : 'red';
-  return <span className={`pr-badge pr-badge--${tone}`}>{level}</span>;
+function KeyCell({ level }: { level: Device['keySecurityLevel'] }): ReactNode {
+  if (level === 'StrongBox') {
+    return (
+      <span className="pm-pass">
+        <Icon name="verified_user" fill size="sm" />
+        StrongBox hardware
+      </span>
+    );
+  }
+  if (level === 'TrustedEnvironment') {
+    return (
+      <span className="pm-pass">
+        <Icon name="verified_user" fill size="sm" />
+        TEE hardware
+      </span>
+    );
+  }
+  return (
+    <span className="pm-warn">
+      <Icon name="gpp_maybe" fill size="sm" />
+      Software key, not hardware
+    </span>
+  );
 }
 
 /** Warns when the OS patch level is older than the policy window of 12 months. */
@@ -45,91 +62,107 @@ export function Devices(): ReactNode {
 
   if (status === 'loading') return <LoadingState label="Loading approver phones" />;
   if (status === 'error') {
-    return <ErrorState title="Could not load the devices" error={error} />;
+    return <ErrorState title="We could not load the devices" error={error} />;
   }
 
   return (
-    <div className="pr-stack">
-      <div>
-        <h1 className="pr-h1">Approver phones</h1>
-        <p className="pr-muted">
-          The phones that can sign an approval. Read-only for now.
+    <>
+      <StateBand eyebrow={<span className="pm-label">Devices</span>}>
+        <h1 className="pm-display">Approver phones</h1>
+        <div className="pm-muted">
+          The phones that can sign an approval, and what we know about each one.
+        </div>
+      </StateBand>
+
+      <div className="pm-stack pm-stack--lg">
+        {data.length === 0 ? (
+          <EmptyState
+            title="No phones enrolled yet"
+            detail="A phone appears here once an approver enrols it and every attestation check passes."
+            icon="smartphone"
+          />
+        ) : (
+          <div className="pm-table-wrap">
+            <table className="pm-table">
+              <thead>
+                <tr>
+                  <th scope="col">Approver</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Key</th>
+                  <th scope="col">Security patch</th>
+                  <th scope="col">Last integrity verdict</th>
+                  <th scope="col">Enrolled</th>
+                  <th scope="col">
+                    <span className="pm-visually-hidden">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((device) => {
+                  const stale = patchIsStale(device.patchLevel);
+                  return (
+                    <tr key={device.id}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{device.approver}</div>
+                        {device.revoked ? (
+                          <span className="pm-chip pm-chip--blocked">
+                            <Icon name="gpp_bad" />
+                            Device removed
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        {device.phoneModel ?? <span className="pm-muted">Not recorded</span>}
+                        <div className="pm-mono pm-muted">{device.deviceId}</div>
+                      </td>
+                      <td>
+                        <KeyCell level={device.keySecurityLevel} />
+                      </td>
+                      <td>
+                        {device.patchLevel ?? <span className="pm-muted">Not recorded</span>}
+                        {stale ? (
+                          <div className="pm-warn" style={{ fontSize: 13 }}>
+                            <Icon name="warning" fill size="sm" />
+                            More than 12 months old
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {device.lastIntegrityVerdict ? (
+                          <span className="pm-pass">
+                            <Icon name="check_circle" fill size="sm" />
+                            <span className="pm-mono">{device.lastIntegrityVerdict}</span>
+                          </span>
+                        ) : (
+                          <CouldNotVerify />
+                        )}
+                      </td>
+                      <td className="pm-muted">
+                        {formatIstDate(device.enrolledAt) ?? 'Not recorded'}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="pm-btn pm-btn--text"
+                          disabled
+                          title="Revoking a phone arrives in a later release."
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p className="pm-hint">
+          Revoking a phone arrives in a later release. Until then, an approver who
+          loses a phone should be removed from the approval matrix by an administrator.
         </p>
       </div>
-
-      {data.length === 0 ? (
-        <EmptyState
-          title="No phones enrolled yet"
-          detail="A phone appears here once an approver enrols it and every attestation check passes."
-        />
-      ) : (
-        <table className="pr-table">
-          <thead>
-            <tr>
-              <th scope="col">Approver</th>
-              <th scope="col">Phone</th>
-              <th scope="col">Key held in</th>
-              <th scope="col">Security patch</th>
-              <th scope="col">Last integrity verdict</th>
-              <th scope="col">Enrolled</th>
-              <th scope="col">
-                <span className="pr-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((device) => {
-              const enrolled = formatIstWithRelative(device.enrolledAt);
-              const stale = patchIsStale(device.patchLevel);
-              return (
-                <tr key={device.id}>
-                  <td>
-                    {device.approver}
-                    {device.revoked ? (
-                      <span className="pr-badge pr-badge--red">Revoked</span>
-                    ) : null}
-                  </td>
-                  <td>{device.phoneModel ?? <span className="pr-muted">Not recorded</span>}</td>
-                  <td>
-                    <SecurityLevelBadge level={device.keySecurityLevel} />
-                  </td>
-                  <td>
-                    {device.patchLevel ?? <span className="pr-muted">Not recorded</span>}
-                    {stale ? (
-                      <div className="pr-badge pr-badge--amber">More than 12 months old</div>
-                    ) : null}
-                  </td>
-                  <td>
-                    {device.lastIntegrityVerdict ? (
-                      <code className="pr-mono">{device.lastIntegrityVerdict}</code>
-                    ) : (
-                      <CouldNotVerify />
-                    )}
-                  </td>
-                  <td>
-                    {enrolled ? enrolled.absolute : <span className="pr-muted">Not recorded</span>}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="pr-button pr-button--small"
-                      disabled
-                      title="Revoking a phone arrives in a later release."
-                    >
-                      Revoke
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-
-      <p className="pr-fineprint">
-        Revoking a phone arrives in a later release. Until then, an approver who loses
-        a phone should be removed from the approval matrix by an administrator.
-      </p>
-    </div>
+    </>
   );
 }
