@@ -10,7 +10,6 @@
     "./api/*": "./src/api/*.ts",
     "./components/*": "./src/components/*.tsx",
     "./format/*": "./src/format/*.ts",
-    "./mandate/*": "./src/mandate/*.ts",
     "./types/*": "./src/types/*.ts",
     "./*": "./src/*"
   },
