@@ -2,24 +2,59 @@
  * The public mandate verifier.
  *
  * What a person can do here: paste a mandate id or a mandate JSON, and have their
- * own browser check the Cloud KMS countersignature and approver signature with WebCrypto.
+ * own browser check the Cloud KMS countersignature and the approver signature
+ * with WebCrypto.
  *
- * The approver's phone and Cloud KMS sign DIFFERENT bytes:
+ * The approver's phone and Cloud KMS sign DIFFERENT bytes, and this page never
+ * blurs the two:
  * - Payee, account, IFSC and amount are decoded from summary_b64 only.
  * - Decision, tier, device and signed time are decoded from mandate_b64 only.
+ *
+ * Nothing on this page is read from the outer JSON, because the outer JSON is the
+ * part an attacker can rewrite. The verification itself lives in ./crypto.
+ *
+ * Deep imports from @pramaan/shared, never the package root: this page is public
+ * and must not ship Firebase Auth to someone who only wants to check a mandate.
  */
 
-import { Money } from '@pramaan/shared/components/Money';
-import { PramaanMark } from '@pramaan/shared/components/PramaanMark';
-import { formatIfsc, maskAccount } from '@pramaan/shared/format/account';
+import { Icon } from '@pramaan/shared/components/Icon';
+import { AmountBlock } from '@pramaan/shared/components/Money';
+import { PramaanLockup } from '@pramaan/shared/components/PramaanMark';
+import { StateBand } from '@pramaan/shared/components/StateBand';
 import { type ReactNode, useCallback, useState } from 'react';
-import {
-  type MandateInput,
-  type VerificationResult,
-  verifyMandate,
-} from './crypto';
+import { type MandateInput, type VerificationResult, verifyMandate } from './crypto';
 
 type Mode = 'id' | 'json';
+
+/**
+ * The band colour and the words that go with each outcome. "Not found" and
+ * "error" leave the band blue on purpose: neither is a verdict on the payment.
+ */
+const OUTCOME: Record<
+  string,
+  {
+    band: 'released' | 'blocked' | 'expired' | null;
+    chip: string;
+    icon: string;
+    heading: string;
+  }
+> = {
+  valid: { band: 'released', chip: 'Valid', icon: 'verified', heading: 'This mandate is valid' },
+  invalid_signature: {
+    band: 'blocked',
+    chip: 'Invalid',
+    icon: 'gpp_bad',
+    heading: 'This mandate did not verify',
+  },
+  expired: {
+    band: 'expired',
+    chip: 'Expired',
+    icon: 'schedule',
+    heading: 'This mandate has expired',
+  },
+  not_found: { band: null, chip: 'Not found', icon: 'help', heading: 'No mandate with that id' },
+  error: { band: null, chip: 'Error', icon: 'error', heading: 'We could not finish the check' },
+};
 
 export function App(): ReactNode {
   const [mode, setMode] = useState<Mode>('id');
@@ -36,8 +71,8 @@ export function App(): ReactNode {
     setResult(null);
 
     const apiBase =
-      (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env
-        ?.VITE_API_BASE ?? 'http://localhost:4010';
+      (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ??
+      'http://localhost:4010';
 
     const fetchKmsKey = async (): Promise<string> => {
       const res = await fetch(`${apiBase}/keys/countersign`);
@@ -56,10 +91,7 @@ export function App(): ReactNode {
       if (mode === 'id') {
         const res = await fetch(`${apiBase}/mandates/${encodeURIComponent(trimmed)}`);
         if (res.status === 404) {
-          setResult({
-            status: 'not_found',
-            message: `Mandate ${trimmed} not found.`,
-          });
+          setResult({ status: 'not_found', message: `Mandate ${trimmed} not found.` });
           setVerifying(false);
           return;
         }
@@ -74,43 +106,48 @@ export function App(): ReactNode {
       const res = await verifyMandate(mandate, fetchKmsKey);
       setResult(res);
     } catch (err) {
-      setResult({
-        status: 'error',
-        message: (err as Error).message,
-      });
+      setResult({ status: 'error', message: (err as Error).message });
     } finally {
       setVerifying(false);
     }
   }, [mode, trimmed]);
 
+  const outcome = result ? OUTCOME[result.status] : null;
+
   return (
-    <div className="pr-shell">
-      <header className="pr-header">
-        <div className="pr-header__inner">
-          <PramaanMark size={26} />
-          <span className="pr-badge pr-badge--grey">Public verifier</span>
+    <div>
+      <header className="pm-page" style={{ paddingBottom: 0 }}>
+        <div className="pm-spread">
+          <PramaanLockup size={26} />
+          <span className="pm-chip">
+            <Icon name="public" size="sm" />
+            Public verifier
+          </span>
         </div>
       </header>
 
-      <main className="pr-main pr-stack">
-        <div>
-          <h1 className="pr-h1">Verify a Pramaan mandate</h1>
-          <p className="pr-muted">
+      <main className="pm-page pm-page--narrow pm-stack--lg">
+        <StateBand
+          status={outcome?.band ?? null}
+          eyebrow={<span className="pm-label">Mandate check</span>}
+        >
+          <h1 className="pm-display">{outcome ? outcome.heading : 'Verify a Pramaan mandate'}</h1>
+          <div className="pm-muted">
             Check that a payment really was approved by an enrolled approver phone, and
-            countersigned by Pramaan&rsquo;s Cloud KMS HSM. The check runs in your browser,
-            so you do not have to trust Pramaan&rsquo;s servers or ours.
-          </p>
-        </div>
+            countersigned by Pramaan&rsquo;s Cloud KMS HSM. The check runs in your own browser, so
+            you do not have to trust Pramaan&rsquo;s servers, or ours.
+          </div>
+        </StateBand>
 
-        <section className="pr-card pr-stack" aria-labelledby="input-heading">
-          <h2 id="input-heading" className="pr-h2">
+        <section className="pm-card pm-stack" aria-labelledby="input-heading">
+          <h2 id="input-heading" className="pm-heading">
             The mandate
           </h2>
 
-          <div className="pr-filters" role="group" aria-label="How to provide the mandate">
+          <div className="pm-filters" role="group" aria-label="How to provide the mandate">
             <button
               type="button"
-              className="pr-filter"
+              className="pm-filter"
               aria-pressed={mode === 'id'}
               onClick={() => {
                 setMode('id');
@@ -121,7 +158,7 @@ export function App(): ReactNode {
             </button>
             <button
               type="button"
-              className="pr-filter"
+              className="pm-filter"
               aria-pressed={mode === 'json'}
               onClick={() => {
                 setMode('json');
@@ -133,33 +170,33 @@ export function App(): ReactNode {
           </div>
 
           {mode === 'id' ? (
-            <div className="pr-field">
-              <label className="pr-label" htmlFor="mandate-id">
+            <div className="pm-field">
+              <label className="pm-field__label" htmlFor="mandate-id">
                 Mandate id
               </label>
               <input
                 id="mandate-id"
-                className="pr-input"
+                className="pm-input pm-mono"
                 placeholder="pm_01JD2XGENUINE0001"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 autoComplete="off"
                 spellCheck={false}
               />
-              <p className="pr-fineprint">
+              <p className="pm-hint">
                 The id printed on the evidence pack, or the one the console shows.
               </p>
             </div>
           ) : (
-            <div className="pr-field">
-              <label className="pr-label" htmlFor="mandate-json">
+            <div className="pm-field">
+              <label className="pm-field__label" htmlFor="mandate-json">
                 Mandate JSON
               </label>
               <textarea
                 id="mandate-json"
-                className="pr-textarea"
+                className="pm-textarea pm-mono"
                 rows={10}
-                placeholder='{"type":"pramaan.payment_mandate.v1", "summary_b64":"...", "mandate_b64":"...", ...}'
+                placeholder="The mandate object, with its summary_b64 and mandate_b64 fields"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 spellCheck={false}
@@ -167,19 +204,29 @@ export function App(): ReactNode {
             </div>
           )}
 
-          <div className="pr-row">
+          <div className="pm-row">
             <button
               type="button"
-              className="pr-button pr-button--primary"
+              className="pm-btn pm-btn--primary"
               disabled={!canVerify}
               onClick={() => void handleVerify()}
             >
-              {verifying ? 'Verifying...' : 'Verify'}
+              {verifying ? (
+                <>
+                  <span className="pm-spinner" aria-hidden="true" />
+                  Verifying&hellip;
+                </>
+              ) : (
+                <>
+                  <Icon name="verified_user" size="sm" />
+                  Verify
+                </>
+              )}
             </button>
             {trimmed.length > 0 ? (
               <button
                 type="button"
-                className="pr-button"
+                className="pm-btn pm-btn--text"
                 onClick={() => {
                   setValue('');
                   setResult(null);
@@ -192,171 +239,163 @@ export function App(): ReactNode {
         </section>
 
         {result === null ? (
-          <section className="pr-card pr-stack" aria-labelledby="pending-heading">
-            <h2 id="pending-heading" className="pr-h2">
-              How verification works
+          <section className="pm-card pm-stack" aria-labelledby="how-heading">
+            <h2 id="how-heading" className="pm-heading">
+              What your browser will check
             </h2>
-            <p>
-              When you click Verify, your browser executes a 5-step fail-closed verification:
+            <p className="pm-muted" style={{ margin: 0 }}>
+              Five steps, and it fails closed: if any one of them cannot be completed, the answer
+              is not &ldquo;valid&rdquo;.
             </p>
-            <ol className="pr-stack" style={{ margin: 0, paddingLeft: '1.25rem', gap: '0.5rem' }}>
-              <li>Verifies Cloud KMS countersignature over <code className="pr-mono">mandate_b64</code>.</li>
-              <li>Extracts the device public key ONLY from inside <code className="pr-mono">mandate_b64</code> (ignoring outer JSON).</li>
-              <li>Verifies the approver&rsquo;s signature over <code className="pr-mono">summary_b64</code> with that device key.</li>
-              <li>Ensures <code className="pr-mono">SHA-256(summary_b64)</code> equals <code className="pr-mono">summary_sha256</code> bound inside the mandate.</li>
-              <li>Validates expiration timestamp from inside <code className="pr-mono">mandate_b64</code>.</li>
+            <ol className="pm-stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
+              <li>
+                The Cloud KMS countersignature over <code className="pm-mono">mandate_b64</code>.
+              </li>
+              <li>
+                The approver&rsquo;s device public key, taken only from inside{' '}
+                <code className="pm-mono">mandate_b64</code>.
+              </li>
+              <li>
+                The approver&rsquo;s signature over <code className="pm-mono">summary_b64</code>,
+                using that device key.
+              </li>
+              <li>
+                That <code className="pm-mono">SHA-256(summary_b64)</code> equals the{' '}
+                <code className="pm-mono">summary_sha256</code> bound inside the mandate.
+              </li>
+              <li>
+                The expiry recorded inside <code className="pm-mono">mandate_b64</code>.
+              </li>
             </ol>
-            <p className="pr-fineprint">
-              Payment details are parsed from <code className="pr-mono">summary_b64</code> only.
-              Decision, tier, and device are parsed from <code className="pr-mono">mandate_b64</code> only.
-            </p>
           </section>
         ) : null}
 
         {result?.status === 'valid' && result.details ? (
-          <section className="pr-card pr-stack pr-card--success" aria-labelledby="valid-heading">
-            <div className="pr-spread">
-              <h2 id="valid-heading" className="pr-h2">
-                Mandate Valid
+          <section className="pm-card pm-stack--lg" aria-labelledby="valid-heading">
+            <div className="pm-success" style={{ padding: 'var(--space-6) var(--space-4)' }}>
+              <div className="pm-success__circle">
+                <Icon name="verified" fill />
+              </div>
+              <h2 id="valid-heading" className="pm-title">
+                Both signatures verified
               </h2>
-              <span className="pr-badge pr-badge--green">Valid</span>
+              <p className="pm-muted" style={{ margin: 0 }}>
+                The approver&rsquo;s phone signed this payment, and Cloud KMS countersigned that
+                signature. Your browser checked both.
+              </p>
             </div>
 
-            <p className="pr-fineprint">
-              Cryptographic proof verified with WebCrypto. Both the approver hardware signature
-              and Cloud KMS countersignature were independently verified over their respective canonical bytes.
-            </p>
+            <div>
+              <div className="pm-label">
+                The payment that was signed &middot; from{' '}
+                <code className="pm-mono">summary_b64</code>
+              </div>
+              <AmountBlock
+                paise={result.details.amountPaise}
+                payeeName={result.details.payeeName}
+                payeeAccountLast4={result.details.accountLast4}
+                payeeIfsc={result.details.ifsc}
+              />
+            </div>
 
-            <h3 className="pr-h3" style={{ marginTop: '0.5rem' }}>
-              Payment Details (from <code className="pr-mono">summary_b64</code>)
-            </h3>
-            <table className="pr-table">
-              <caption className="pr-visually-hidden">
-                Payment details parsed from decoded summary_b64 bytes
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Payee</th>
-                  <th scope="col">Amount</th>
-                  <th scope="col">Account</th>
-                  <th scope="col">IFSC</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{result.details.payeeName}</td>
-                  <td>
-                    <Money paise={result.details.amountPaise} withWords />
-                  </td>
-                  <td>{maskAccount(result.details.accountLast4)}</td>
-                  <td>{formatIfsc(result.details.ifsc)}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div>
+              <div className="pm-label">
+                The decision &middot; from <code className="pm-mono">mandate_b64</code>
+              </div>
+              <dl className="pm-defs">
+                <dt>Decision</dt>
+                <dd>
+                  <span className="pm-chip pm-chip--approved">
+                    <Icon name="how_to_reg" size="sm" />
+                    {result.details.decision}
+                  </span>
+                </dd>
 
-            <h3 className="pr-h3" style={{ marginTop: '0.75rem' }}>
-              Governance Proof (from <code className="pr-mono">mandate_b64</code>)
-            </h3>
-            <table className="pr-table">
-              <caption className="pr-visually-hidden">
-                Governance metadata parsed from decoded mandate_b64 bytes
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Decision</th>
-                  <th scope="col">Tier</th>
-                  <th scope="col">Approver Device</th>
-                  <th scope="col">Signed At</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <span className="pr-badge pr-badge--green">{result.details.decision}</span>
-                  </td>
-                  <td>Tier {result.details.tier}</td>
-                  <td>
-                    <code className="pr-mono">{result.details.deviceId}</code>
-                    {result.details.keySecurityLevel ? (
-                      <span className="pr-fineprint" style={{ display: 'block' }}>
-                        {result.details.keySecurityLevel}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td>{result.details.signedAt}</td>
-                </tr>
-              </tbody>
-            </table>
+                <dt>Tier</dt>
+                <dd>Tier {result.details.tier}</dd>
 
-            <p className="pr-fineprint" style={{ color: 'var(--pr-color-text-muted)' }}>
-              Note: All payment fields are parsed directly from <code className="pr-mono">summary_b64</code>,
-              and all governance fields are parsed directly from <code className="pr-mono">mandate_b64</code>.
-              Outer JSON values are never used for display.
+                <dt>Approver device</dt>
+                <dd>
+                  <code className="pm-mono">{result.details.deviceId}</code>
+                  {result.details.keySecurityLevel ? (
+                    <span className="pm-hint">{result.details.keySecurityLevel}</span>
+                  ) : null}
+                </dd>
+
+                <dt>Signed at</dt>
+                <dd>{result.details.signedAt}</dd>
+              </dl>
+            </div>
+
+            <p className="pm-hint" style={{ margin: 0 }}>
+              Every payment field above comes from <code className="pm-mono">summary_b64</code> and
+              every governance field from <code className="pm-mono">mandate_b64</code>. Values in
+              the surrounding JSON are never displayed, because those are the ones an attacker
+              could change.
             </p>
           </section>
         ) : null}
 
-        {result?.status === 'invalid_signature' ? (
-          <section className="pr-card pr-stack pr-card--error" aria-labelledby="invalid-heading">
-            <div className="pr-spread">
-              <h2 id="invalid-heading" className="pr-h2">
-                Invalid Signature
+        {result && result.status !== 'valid' && outcome ? (
+          <section className="pm-card pm-stack" aria-labelledby="outcome-heading">
+            <div className="pm-spread">
+              <h2 id="outcome-heading" className="pm-heading">
+                {outcome.heading}
               </h2>
-              <span className="pr-badge pr-badge--red">Invalid</span>
+              <span
+                className={`pm-chip ${
+                  result.status === 'invalid_signature'
+                    ? 'pm-chip--blocked'
+                    : result.status === 'expired'
+                      ? 'pm-chip--expired'
+                      : ''
+                }`.trim()}
+              >
+                <Icon name={outcome.icon} size="sm" />
+                {outcome.chip}
+              </span>
             </div>
-            <p>
-              Cryptographic verification failed. Either a signature mismatch occurred,
-              the summary hash differed from the countersigned mandate, or an unauthorized
-              key was used.
-            </p>
-            {result.message ? (
-              <p className="pr-fineprint pr-error">{result.message}</p>
+
+            {result.status === 'invalid_signature' ? (
+              <div className="pm-banner pm-banner--blocked">
+                <Icon name="gpp_bad" fill />
+                <div>
+                  Do not act on this mandate. One of the checks failed: a signature did not match,
+                  the summary hash differed from the one bound inside the countersigned mandate, or
+                  the signing key was not the enrolled device&rsquo;s.
+                </div>
+              </div>
             ) : null}
-          </section>
-        ) : null}
 
-        {result?.status === 'expired' ? (
-          <section className="pr-card pr-stack" aria-labelledby="expired-heading">
-            <div className="pr-spread">
-              <h2 id="expired-heading" className="pr-h2">
-                Mandate Expired
-              </h2>
-              <span className="pr-badge pr-badge--amber">Expired</span>
-            </div>
-            <p>
-              This mandate was genuine, but its validity window specified in <code className="pr-mono">mandate_b64</code> has passed.
-            </p>
-            {result.message ? (
-              <p className="pr-fineprint">{result.message}</p>
+            {result.status === 'expired' ? (
+              <div className="pm-banner pm-banner--held">
+                <Icon name="schedule" fill />
+                <div>
+                  The signatures on this mandate are genuine, but the validity window recorded
+                  inside <code className="pm-mono">mandate_b64</code> has passed. A payment should
+                  not be released on an expired mandate.
+                </div>
+              </div>
             ) : null}
+
+            {result.status === 'not_found' || result.status === 'error' ? (
+              <div className="pm-banner pm-banner--info">
+                <Icon name="info" />
+                <div>
+                  {result.status === 'not_found'
+                    ? 'This is not a statement about a payment. Nothing was checked, because there was nothing to check.'
+                    : 'The check did not run to completion, so this is neither a pass nor a failure.'}
+                </div>
+              </div>
+            ) : null}
+
+            {result.message ? <p className="pm-hint pm-mono">{result.message}</p> : null}
           </section>
         ) : null}
 
-        {result?.status === 'not_found' ? (
-          <section className="pr-card pr-stack" aria-labelledby="notfound-heading">
-            <div className="pr-spread">
-              <h2 id="notfound-heading" className="pr-h2">
-                Mandate Not Found
-              </h2>
-              <span className="pr-badge pr-badge--grey">Not found</span>
-            </div>
-            <p>
-              {result.message ?? 'No mandate with that identifier was found.'}
-            </p>
-          </section>
-        ) : null}
-
-        {result?.status === 'error' ? (
-          <section className="pr-card pr-stack" aria-labelledby="error-heading">
-            <div className="pr-spread">
-              <h2 id="error-heading" className="pr-h2">
-                Verification Error
-              </h2>
-              <span className="pr-badge pr-badge--red">Error</span>
-            </div>
-            <p>{result.message ?? 'An unexpected error occurred during verification.'}</p>
-          </section>
-        ) : null}
+        <p className="pm-hint" style={{ textAlign: 'center' }}>
+          Pramaan never holds your money and cannot move it. This page only reads signatures.
+        </p>
       </main>
     </div>
   );

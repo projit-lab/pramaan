@@ -205,7 +205,7 @@ function PayoutsFromFirestore(): ReactNode {
       {data.map((payout) => (
         <Row
           key={payout.id}
-          name={payout.payeeName}
+          name={payout.payeeNameAtBank}
           account={payout.payeeAccountLast4}
           ifsc={payout.payeeIfsc}
           paise={payout.amountPaise}

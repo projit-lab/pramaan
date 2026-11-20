@@ -272,7 +272,7 @@ function StateBandForPayment({ payment }: { payment: Hold }): ReactNode {
         </div>
         <AmountBlock
           paise={payment.amountPaise}
-          payeeName={payment.payeeName}
+          payeeName={payment.payeeNameAtBank}
           payeeAccountLast4={payment.payeeAccountLast4}
           payeeIfsc={payment.payeeIfsc}
           note={payment.purpose}

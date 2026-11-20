@@ -103,9 +103,12 @@
 .pm-timeline__at { font-size: 13px; color: var(--ink-muted); }
 
 /* AttestationCard */
-.pm-attest { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3) var(--space-4); font-size: 14px; margin: 0; }
+.pm-attest { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3) var(--space-4); font-size: 14px; margin: 0; }
 .pm-attest dt { color: var(--ink-muted); }
-.pm-attest dd { margin: 0; font-weight: 500; }
+/* A column, not inline flow: the verdict chip is an inline-flex box, and the
+   sentence explaining it has to start on its own line rather than wrapping
+   around and running through the chip's icon. */
+.pm-attest dd { margin: 0; font-weight: 500; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
 .pm-pass, .pm-fail, .pm-warn { font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
 .pm-pass { color: var(--released); }
 .pm-fail { color: var(--blocked); }
@@ -126,12 +129,16 @@
 .pm-list__end { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 
 /* HoldsTable (dense console view) */
+/* A table that cannot fit scrolls inside its own box at every width, rather than
+   widening the page. The min-width: 0 lets it shrink inside a grid or flex parent. */
+.pm-table-wrap { overflow-x: auto; max-width: 100%; min-width: 0; }
 .pm-table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); font-size: 14px; }
 .pm-table th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-muted); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
 .pm-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); vertical-align: middle; }
 .pm-table tbody tr:hover { background: var(--surface-container); cursor: pointer; }
 .pm-table .num { text-align: right; }
-.pm-cell-payee { display: flex; align-items: center; gap: var(--space-3); }
+.pm-cell-payee { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.pm-cell-payee__link { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 500; text-decoration: none; color: var(--ink); }
 
 /* Banner */
 .pm-banner { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); font-size: 14px; color: var(--ink); }
@@ -152,10 +159,15 @@
 .pm-success__circle .pm-ico { font-size: 56px; }
 
 /* Console shell: nav drawer with active pill */
-.pm-shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; background: var(--background); }
-.pm-side { background: var(--surface-container); padding: var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: 2px; }
+/* minmax(0, 1fr), never 1fr: a grid track's automatic floor is min-content, so a
+   wide table or a long email inside it pushes the whole shell past the viewport
+   instead of scrolling within its own column. */
+.pm-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100%; background: var(--background); }
+.pm-side { background: var(--surface-container); padding: var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pm-side a { color: var(--ink); text-decoration: none; padding: 10px var(--space-4); border-radius: var(--radius-pill); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: var(--space-3); }
 .pm-side a[aria-current] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.pm-side__account { padding: var(--space-3); border-top: 1px solid var(--line); min-width: 0; }
+.pm-side__email { margin-bottom: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Approver phone */
 .pm-phone { width: 360px; max-width: 100%; border-radius: 32px; overflow: hidden; border: 1px solid var(--line); background: var(--background); box-shadow: var(--shadow-pop); }
@@ -238,7 +250,7 @@
 html, body { margin: 0; padding: 0; }
 
 /* Page scaffolding for the console and the public pages */
-.pm-page { max-width: 1200px; margin: 0 auto; padding: var(--space-6); width: 100%; }
+.pm-page { max-width: 1200px; margin: 0 auto; padding: var(--space-6); width: 100%; min-width: 0; }
 .pm-page--narrow { max-width: 760px; }
 .pm-spread { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .pm-stack--lg { gap: var(--space-6); }
@@ -304,10 +316,14 @@ fieldset.pm-field legend { padding: 0 var(--space-2); font-size: 14px; font-weig
 /* ------------------------------- responsive ------------------------------ */
 
 @media (max-width: 900px) {
-  .pm-shell { grid-template-columns: 1fr; }
-  .pm-side { flex-direction: row; overflow-x: auto; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+  .pm-shell { grid-template-columns: minmax(0, 1fr); }
+  .pm-side { flex-direction: row; align-items: center; overflow-x: auto; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
   .pm-side a { white-space: nowrap; }
   .pm-side__brand { display: none; }
+  /* In the row drawer the account sits at the end, divided on its left, and the
+     email is allowed to disappear before it can squeeze the nav links out. */
+  .pm-side__account { border-top: none; border-left: 1px solid var(--line); padding: 0 0 0 var(--space-3); margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+  .pm-side__email { margin-bottom: 0; max-width: 150px; }
   .pm-invoice { grid-template-columns: 1fr; }
   .pm-defs { grid-template-columns: 1fr; gap: var(--space-1); }
   .pm-defs dd { margin-bottom: var(--space-3); }
@@ -321,7 +337,20 @@ fieldset.pm-field legend { padding: 0 var(--space-2); font-size: 14px; font-weig
   .pm-band .pm-amount__fig { font-size: 40px; line-height: 46px; }
   .pm-tiles { grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
   .pm-card { padding: var(--space-4); }
-  .pm-table-wrap { overflow-x: auto; }
+  /* On a phone the table still scrolls sideways, but the three columns that
+     decide anything -- who, what state, how much -- fit before it has to. */
+  .pm-table th, .pm-table td { padding: var(--space-3) var(--space-2); }
+  .pm-table th:first-child, .pm-table td:first-child { padding-left: var(--space-3); }
+  .pm-reason { max-width: 190px; }
+  /* Thumb-sized filter pills. */
+  .pm-filter { min-height: 40px; }
+  /* A phone has no room for the signed-in address, and an address truncated to
+     "fin..." tells nobody anything. The account page keeps it. */
+  .pm-side__email { display: none; }
+  .pm-side__account .pm-btn { white-space: nowrap; }
+  /* Enough width that a three-word payee wraps to two lines, not three. */
+  .pm-cell-payee__link { min-width: 90px; }
+  .pm-cell-payee { gap: var(--space-2); }
 }
 
 /* ---------------------------------------------------------------------- */

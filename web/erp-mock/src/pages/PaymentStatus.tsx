@@ -95,7 +95,7 @@ export function PaymentStatus(): ReactNode {
       </p>
 
       <h1>
-        {hold.payeeName}
+        {hold.payeeNameAtBank}
         {hold.purpose ? ` · ${hold.purpose}` : ''}
       </h1>
 
