@@ -84,7 +84,7 @@ export function Payments(): ReactNode {
               return (
                 <tr key={payment.id}>
                   <td>
-                    {payment.payeeName}
+                    {payment.payeeNameAtBank}
                     <div className="pr-fineprint">
                       {maskAccount(payment.payeeAccountLast4)}
                     </div>

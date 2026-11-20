@@ -49,7 +49,7 @@ payment status.
 | `tier` | number | 0 to 3 |
 | `amountPaise` | string | integer paise |
 | `currency` | string | `INR` |
-| `payeeName` | string | the name as the bank returns it, where a bank exposes it |
+| `payeeNameAtBank` | string | the name as the bank returns it, where a bank exposes it |
 | `payeeAccountLast4` | string | four digits |
 | `payeeIfsc` | string | |
 | `payerAccountLast4` | string | |
@@ -127,7 +127,7 @@ it; the collection is empty until then, and the page says "No money has moved ye
 | `intentId` | string or null | |
 | `amountPaise` | string | |
 | `currency` | string | `INR` |
-| `payeeName` | string | |
+| `payeeNameAtBank` | string | |
 | `payeeAccountLast4` | string | |
 | `payeeIfsc` | string | |
 | `status` | string | `queued`, `paid`, `failed` |

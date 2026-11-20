@@ -83,7 +83,7 @@ export interface Hold {
   tier: number;
   amountPaise: string;
   currency: 'INR';
-  payeeName: string;
+  payeeNameAtBank: string;
   payeeAccountLast4: string;
   payeeIfsc: string;
   payerAccountLast4?: string;
@@ -162,7 +162,7 @@ export interface Payout {
   intentId?: string | null;
   amountPaise: string;
   currency: 'INR';
-  payeeName: string;
+  payeeNameAtBank: string;
   payeeAccountLast4: string;
   payeeIfsc: string;
   status: 'queued' | 'paid' | 'failed';

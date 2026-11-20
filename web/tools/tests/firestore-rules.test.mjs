@@ -76,7 +76,7 @@ beforeEach(async () => {
       status: 'held',
       tier: 2,
       amountPaise: '465000000',
-      payeeName: 'Global Trade Solutions',
+      payeeNameAtBank: 'Global Trade Solutions',
     });
     await setDoc(doc(db, 'holds', INTENT_ID, 'steps', '001'), {
       n: 1,

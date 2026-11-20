@@ -8,12 +8,6 @@
 # through as opaque strings; it does not define their construction or semantics.
 # Shoaib owns display fields.
 #
-# Two things in here are proposals that need an explicit yes or no:
-#   1. GET /mandates/{id} returns canonical_b64, the exact bytes that were
-#      countersigned, so the verifier page can hash them in the browser without a
-#      third canonicalisation implementation in TypeScript.
-#   2. GET /payouts exists so the public sandbox bank page can read payouts
-#      without signing in (Firestore rules require auth). See contracts/firestore.md.
 openapi: 3.1.0
 info:
   title: Pramaan API
@@ -553,10 +547,10 @@ paths:
         No sign-in required, because an auditor or payee must be able to check a
         mandate they were handed. Lands in M2.
 
-        PROPOSAL: canonical_b64 carries the exact bytes that were countersigned,
-        base64-encoded, so the browser can hash them with WebCrypto. Without it the
-        verifier page would need a third canonicalisation implementation in
-        TypeScript, which would drift from the Kotlin and Python ones.
+        canonical_b64 carries the exact bytes that were countersigned,
+        base64-encoded, so the browser can hash and verify them with WebCrypto.
+        Verifiers must decode and display payment fields parsed from canonical_b64,
+        never from the surrounding JSON.
       operationId: getMandate
       security: []
       parameters:
@@ -1470,7 +1464,7 @@ components:
         An AP2-style record. The security blocks (summary_sha256, approval
         signature, attestation evidence, countersignature) are Prajit's; the web
         lane displays and verifies them but does not define them.
-      required: [mandate_id, type, intent_id, summary_sha256, decision, tier, approval, countersignature, expires_at]
+      required: [mandate_id, type, intent_id, summary_sha256, canonical_b64, decision, tier, approval, countersignature, expires_at]
       properties:
         mandate_id:
           type: string
@@ -1485,9 +1479,11 @@ components:
         canonical_b64:
           type: string
           description: |
-            PROPOSAL. The exact canonical mandate bytes that were countersigned,
-            base64-encoded, so the verifier page can hash them in the browser
-            instead of re-implementing canonicalisation in TypeScript.
+            The exact bytes that were signed (by the approver device and countersigned
+            by Cloud KMS HSM), base64-encoded. Verifiers must decode canonical_b64,
+            verify both signatures over those exact bytes using WebCrypto, and MUST
+            display fields (payee, account, IFSC, and amount) parsed directly from the
+            decoded bytes only, never from the surrounding JSON.
         decision:
           $ref: '#/components/schemas/Decision'
         tier:
@@ -1542,6 +1538,9 @@ components:
                 The Play Integrity verdict, only when the server really verified
                 one. Null means no verdict, and the screen must say so rather than
                 imply a passed check.
+            public_key:
+              type: [string, 'null']
+              description: Approver device P-256 public key (SPKI PEM or base64 DER).
             signature:
               type: string
               description: Base64. Owned by Prajit.
@@ -1551,6 +1550,9 @@ components:
           properties:
             kms_key_version:
               type: string
+            public_key:
+              type: [string, 'null']
+              description: KMS P-256 public key (SPKI PEM), if bundled.
             signature:
               type: string
               description: |

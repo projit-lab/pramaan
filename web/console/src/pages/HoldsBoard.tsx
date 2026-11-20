@@ -132,7 +132,7 @@ export function HoldsBoard(): ReactNode {
       {newHold ? (
         <div className="pr-toasts">
           <div className="pr-toast pr-toast--held" role="status">
-            New hold: {newHold.payeeName}
+            New hold: {newHold.payeeNameAtBank}
           </div>
         </div>
       ) : null}
@@ -162,7 +162,7 @@ function HoldsTable({ rows }: { rows: Array<WithId<Hold>> }): ReactNode {
           return (
             <tr key={hold.id}>
               <td>
-                <Link to={`/payments/${hold.id}`}>{hold.payeeName}</Link>
+                <Link to={`/payments/${hold.id}`}>{hold.payeeNameAtBank}</Link>
                 <div className="pr-fineprint">
                   {maskAccount(hold.payeeAccountLast4)} &middot; {hold.payeeIfsc}
                 </div>
