@@ -2,6 +2,7 @@
 .gradle/
 build/
 local.properties
+android/gradle/gradle-daemon-jvm.properties
 *.apk
 *.aab
 captures/
@@ -44,6 +45,7 @@ coverage/
 service-account*.json
 *-credentials.json
 *.pem
+!services/api/app/domain/attestation_roots/*.pem
 *.p12
 
 # Terraform

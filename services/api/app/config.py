@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = False
     ALLOW_TEST_SIGNER: bool = False
     FIRESTORE_EMULATOR_HOST: str | None = None
+    ATTEST_PATCH_WINDOW_MONTHS: int = 12
+    ANDROID_SIGNING_SHA256: str = "3313d44bb45e66849411470eeffa85a49a66bc9d1a9718a2463b98898d93d968"
     VERSION: str = get_git_short_sha()
 
 
