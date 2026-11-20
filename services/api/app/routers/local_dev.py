@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.db.engine import unit_of_work
-from app.db.models import Delegation, StandingMandate, Vendor
+from app.db.models import Delegation, PaymentIntent, StandingMandate, Vendor
 from app.domain.ids import new_id
 from app.domain.models import AuthenticatedUser
 from app.domain.money import parse_paise
@@ -133,3 +133,25 @@ def local_delegation(
         )
         s.add(d)
         return {"delegation_id": d.delegation_id}
+
+
+@router.post("/_local/intents/{intent_id}/tamper")
+def local_tamper_intent(
+    intent_id: str,
+    rt: Runtime = Depends(get_runtime),
+):
+    if rt.settings.ENV != "local":
+        raise ProblemException(404, "Not found", "Route only available when ENV=local.")
+    with unit_of_work(rt.sessions) as s:
+        intent = s.get(PaymentIntent, intent_id, with_for_update=True)
+        if intent is None:
+            raise ProblemException(404, "Not found", f"No payment intent '{intent_id}'.")
+        # Alter one digit of stored payee account
+        if intent.payee_account:
+            last = intent.payee_account[-1]
+            new_last = "9" if last != "9" else "8"
+            intent.payee_account = intent.payee_account[:-1] + new_last
+        else:
+            intent.payee_account = "9999999999"
+        intent.updated_at = utc_now(rt)
+        return {"intent_id": intent.intent_id, "payee_account": intent.payee_account}

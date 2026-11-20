@@ -36,6 +36,7 @@ TABLES = {
     "standing_mandates",
     "standing_mandate_usage",
     "batches",
+    "enrolment_challenges",
 }
 
 
