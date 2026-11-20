@@ -67,6 +67,7 @@ class ApproverCheckActivity : FragmentActivity() {
                     var selectedApprovalId by remember { mutableStateOf("") }
                     var responseLog by remember { mutableStateOf("") }
                     var pendingCount by remember { mutableStateOf(0) }
+                    var selectedBatchId by remember { mutableStateOf("") }
                     val scope = rememberCoroutineScope()
                     val scrollState = rememberScrollState()
 
@@ -350,6 +351,116 @@ class ApproverCheckActivity : FragmentActivity() {
                             }
                         }
 
+                        // ---- Signed batches: one fingerprint for a whole approval window ----
+                        Text("Batches", style = MaterialTheme.typography.titleMedium)
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    statusMessage = "Loading pending batches..."
+                                    responseLog = "GET /v1/batches?status=pending\n"
+                                    try {
+                                        val (code, body) = httpGet(
+                                            urlStr = "$apiBase/v1/batches?status=pending",
+                                            userHeader = approverEmail
+                                        )
+                                        responseLog += "HTTP $code:\n$body\n"
+                                        if (code !in 200..299) {
+                                            statusMessage = "Load batches failed: HTTP $code"
+                                            return@launch
+                                        }
+                                        val list = JSONObject(body).optJSONArray("batches") ?: JSONArray()
+                                        if (list.length() == 0) {
+                                            selectedBatchId = ""
+                                            statusMessage = "No pending batches for $approverEmail."
+                                            return@launch
+                                        }
+                                        val first = list.getJSONObject(0)
+                                        selectedBatchId = first.getString("batch_id")
+                                        statusMessage = "Batch $selectedBatchId: " +
+                                            "${first.optInt("line_count")} payments, " +
+                                            "${rupees(first.optString("total_paise"))} total"
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Load batches error", e)
+                                        statusMessage = "Load batches error: ${e.message}"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Load batch")
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf("approve", "decline").forEachIndexed { index, decision ->
+                                if (index == 1) Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            if (selectedBatchId.isBlank()) {
+                                                statusMessage = "Load a batch first"
+                                                return@launch
+                                            }
+                                            responseLog = "GET /v1/batches/$selectedBatchId\n"
+                                            try {
+                                                val (code, body) = httpGet(
+                                                    urlStr = "$apiBase/v1/batches/$selectedBatchId",
+                                                    userHeader = approverEmail
+                                                )
+                                                responseLog += "HTTP $code:\n$body\n\n"
+                                                if (code !in 200..299) {
+                                                    statusMessage = "Failed fetching batch: HTTP $code"
+                                                    return@launch
+                                                }
+                                                val json = JSONObject(body)
+                                                val lines = json.getJSONArray("lines")
+                                                val sb = StringBuilder()
+                                                for (n in 0 until lines.length()) {
+                                                    val l = lines.getJSONObject(n)
+                                                    sb.append("- ${l.optString("payee_name")} ")
+                                                        .append("xx${l.optString("payee_account_last4")} ")
+                                                        .append(rupees(l.optString("amount_paise")))
+                                                        .append("\n")
+                                                }
+                                                responseLog += "Lines you are signing:\n$sb\n"
+                                                val bytes = Base64.decode(
+                                                    json.getString("canonical_b64"), Base64.NO_WRAP
+                                                )
+                                                statusMessage = "Confirm the whole batch with one fingerprint..."
+                                                val sig = Base64.encodeToString(signer.sign(bytes), Base64.NO_WRAP)
+                                                val req = JSONObject().apply {
+                                                    put("decision", decision)
+                                                    put("signature", sig)
+                                                }
+                                                val (postCode, postBody) = httpPost(
+                                                    urlStr = "$apiBase/v1/batches/$selectedBatchId/decision",
+                                                    userHeader = approverEmail,
+                                                    jsonBody = req.toString()
+                                                )
+                                                responseLog += "POST decision HTTP $postCode:\n$postBody\n"
+                                                statusMessage = if (postCode in 200..299) {
+                                                    val n = JSONObject(postBody).optInt("line_count")
+                                                    if (decision == "approve") {
+                                                        "BATCH APPROVED: $n mandates issued with one fingerprint"
+                                                    } else {
+                                                        "BATCH DECLINED: $n payments blocked"
+                                                    }
+                                                } else {
+                                                    "Batch decision failed: HTTP $postCode"
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Batch error", e)
+                                                statusMessage = "Batch error: ${e.message}"
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(if (decision == "approve") "Approve batch" else "Decline batch")
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Server Response Log:", style = MaterialTheme.typography.titleSmall)
                         Card(
@@ -374,6 +485,13 @@ class ApproverCheckActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    private fun rupees(paise: String): String {
+        val p = paise.toLongOrNull() ?: return paise
+        val whole = java.text.NumberFormat.getNumberInstance(java.util.Locale("en", "IN")).format(p / 100)
+        val part = if (p % 100 != 0L) ".%02d".format(p % 100) else ""
+        return "Rs $whole$part"
     }
 
     private suspend fun httpGet(urlStr: String, userHeader: String): Pair<Int, String> =
