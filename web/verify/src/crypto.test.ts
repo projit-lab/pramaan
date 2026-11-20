@@ -1,22 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type MandateInput,
   bytesToBase64,
-  decodeCanonicalB64,
+  computeSha256Hex,
+  decodeMandateB64,
+  decodeSummaryB64,
   derToRaw,
-  extractCanonicalPaymentDetails,
   verifyMandate,
 } from './crypto';
 
-describe('mandate verifier crypto', () => {
+describe('mandate verifier crypto (dual-signature model)', () => {
   it('converts DER ECDSA signature to 64-byte raw format', () => {
-    // A synthetic ASN.1 DER ECDSA signature
     const r = new Uint8Array(32).fill(0x11);
     const s = new Uint8Array(32).fill(0x22);
-    const der = new Uint8Array([
-      0x30, 68,
-      0x02, 32, ...r,
-      0x02, 32, ...s,
-    ]);
+    const der = new Uint8Array([0x30, 68, 0x02, 32, ...r, 0x02, 32, ...s]);
 
     const raw = derToRaw(der);
     expect(raw.length).toBe(64);
@@ -24,38 +21,14 @@ describe('mandate verifier crypto', () => {
     expect(raw.subarray(32, 64)).toEqual(s);
   });
 
-  it('passes 64-byte raw signature through directly', () => {
-    const rawIn = new Uint8Array(64).fill(0x42);
-    const rawOut = derToRaw(rawIn);
-    expect(rawOut).toEqual(rawIn);
+  it('computes correct SHA-256 hex string', async () => {
+    const text = new TextEncoder().encode('hello pramaan');
+    const hex = await computeSha256Hex(text);
+    expect(hex).toBe('0c9d07bf77c33095e960e265a838dc2f70213189c4fe72d104a72983c98137ff');
   });
 
-  it('decodes canonical_b64 and extracts payment fields ONLY from decoded bytes', () => {
-    const canonicalPayload = {
-      mandate_id: 'pm_01JD2XCANONICAL001',
-      payee: {
-        name_at_bank: 'Authentic Vendor Pvt Ltd',
-        account_last4: '4321',
-        ifsc: 'HDFC0001234',
-      },
-      amount_paise: '5000000',
-    };
-
-    const canonicalBytes = new TextEncoder().encode(JSON.stringify(canonicalPayload));
-    const canonicalB64 = bytesToBase64(canonicalBytes);
-
-    const decoded = decodeCanonicalB64(canonicalB64);
-    expect(decoded.data.mandate_id).toBe('pm_01JD2XCANONICAL001');
-
-    const details = extractCanonicalPaymentDetails(decoded);
-    expect(details.payeeName).toBe('Authentic Vendor Pvt Ltd');
-    expect(details.accountLast4).toBe('4321');
-    expect(details.ifsc).toBe('HDFC0001234');
-    expect(details.amountPaise).toBe('5000000');
-  });
-
-  it('verifies both signatures over canonical bytes and ignores outer JSON tampering', async () => {
-    // 1. Generate real ECDSA P-256 keys for Approver and KMS
+  async function createValidFixture() {
+    // 1. Generate real ECDSA P-256 keys for Approver phone and Cloud KMS HSM
     const approverKey = await crypto.subtle.generateKey(
       { name: 'ECDSA', namedCurve: 'P-256' },
       true,
@@ -67,135 +40,214 @@ describe('mandate verifier crypto', () => {
       ['sign', 'verify'],
     );
 
-    // Export public keys as SPKI base64
     const approverSpki = await crypto.subtle.exportKey('spki', approverKey.publicKey);
     const approverSpkiB64 = bytesToBase64(new Uint8Array(approverSpki));
 
     const kmsSpki = await crypto.subtle.exportKey('spki', kmsKey.publicKey);
     const kmsSpkiB64 = bytesToBase64(new Uint8Array(kmsSpki));
 
-    // 2. Canonical payload signed by both
-    const canonicalPayload = {
-      mandate_id: 'pm_01JD2XGENUINE',
-      decision: 'approve',
-      amount_paise: '12500000',
+    // 2. Approver phone signs summary_b64
+    const summaryPayload = {
       payee: {
-        name_at_bank: 'True Payee Services',
-        account_last4: '9988',
-        ifsc: 'ICIC0000104',
+        name_at_bank: 'Authentic Vendor Pvt Ltd',
+        account_last4: '4321',
+        ifsc: 'HDFC0001234',
       },
-      expires_at: '2099-12-31T23:59:59Z',
+      amount_paise: '5000000',
+      currency: 'INR',
     };
+    const summaryBytes = new TextEncoder().encode(JSON.stringify(summaryPayload));
+    const summaryB64 = bytesToBase64(summaryBytes);
 
-    const canonicalBytes = new TextEncoder().encode(JSON.stringify(canonicalPayload));
-    const canonicalB64 = bytesToBase64(canonicalBytes);
-
-    // Sign canonicalBytes with approver key (WebCrypto produces raw 64 bytes)
     const approverSig = await crypto.subtle.sign(
       { name: 'ECDSA', hash: { name: 'SHA-256' } },
       approverKey.privateKey,
-      canonicalBytes,
+      summaryBytes,
     );
+    const approverSigB64 = bytesToBase64(new Uint8Array(approverSig));
 
-    // Sign canonicalBytes with KMS key
+    const summarySha256 = await computeSha256Hex(summaryBytes);
+
+    // 3. Cloud KMS HSM countersigns mandate_b64 which binds summary_sha256 and device_public_key
+    const mandatePayload = {
+      summary_sha256: summarySha256,
+      decision: 'approve',
+      tier: 2,
+      policy_version: '2026.11.1',
+      device_id: 'dv_01JD2XCFOPHONE001',
+      device_public_key: approverSpkiB64,
+      key_security_level: 'StrongBox',
+      integrity_verdict: 'MEETS_STRONG_INTEGRITY',
+      approver_signature: approverSigB64,
+      signed_at: '2026-11-20T14:15:00+05:30',
+      expires_at: '2099-12-31T23:59:59Z',
+    };
+    const mandateBytes = new TextEncoder().encode(JSON.stringify(mandatePayload));
+    const mandateB64 = bytesToBase64(mandateBytes);
+
     const kmsSig = await crypto.subtle.sign(
       { name: 'ECDSA', hash: { name: 'SHA-256' } },
       kmsKey.privateKey,
-      canonicalBytes,
+      mandateBytes,
     );
+    const kmsSigB64 = bytesToBase64(new Uint8Array(kmsSig));
 
-    // 3. Assemble Mandate with outer JSON TAMPERING (fraudulent payee & amount)
-    const mandate = {
-      mandate_id: 'pm_01JD2XGENUINE',
-      canonical_b64: canonicalB64,
-      // Attacker modified outer JSON fields:
-      payee: {
-        name: 'FRAUDULENT PAYEE ATTACKER',
-        account_last4: '0000',
-        ifsc: 'HACK0000000',
-      },
-      amount_paise: '999999999',
+    const mandate: MandateInput = {
+      mandate_id: 'pm_01JD2XGENUINE0001',
+      summary_sha256: summarySha256,
+      summary_b64: summaryB64,
+      mandate_b64: mandateB64,
       approval: {
         approver: 'cfo@acme.example',
-        signature: bytesToBase64(new Uint8Array(approverSig)),
-        public_key: approverSpkiB64,
+        signature: approverSigB64,
       },
       countersignature: {
         kms_key_version: 'mandate-signer/1',
-        signature: bytesToBase64(new Uint8Array(kmsSig)),
+        signature: kmsSigB64,
         public_key: kmsSpkiB64,
       },
       expires_at: '2099-12-31T23:59:59Z',
     };
 
+    return {
+      mandate,
+      approverKey,
+      kmsKey,
+      approverSpkiB64,
+      kmsSpkiB64,
+      summaryPayload,
+      mandatePayload,
+    };
+  }
+
+  it('verifies valid mandate and populates separated display fields', async () => {
+    const { mandate } = await createValidFixture();
+
     const result = await verifyMandate(mandate);
 
-    // Assert that verification succeeds and fields displayed are from CANONICAL ONLY
     expect(result.status).toBe('valid');
-    expect(result.details?.payeeName).toBe('True Payee Services');
-    expect(result.details?.accountLast4).toBe('9988');
-    expect(result.details?.ifsc).toBe('ICIC0000104');
-    expect(result.details?.amountPaise).toBe('12500000');
     expect(result.approverValid).toBe(true);
     expect(result.countersignValid).toBe(true);
+    expect(result.summaryHashMatched).toBe(true);
+
+    // Display fields from summary_b64 only:
+    expect(result.details?.payeeName).toBe('Authentic Vendor Pvt Ltd');
+    expect(result.details?.accountLast4).toBe('4321');
+    expect(result.details?.ifsc).toBe('HDFC0001234');
+    expect(result.details?.amountPaise).toBe('5000000');
+
+    // Display fields from mandate_b64 only:
+    expect(result.details?.decision).toBe('approve');
+    expect(result.details?.tier).toBe(2);
+    expect(result.details?.deviceId).toBe('dv_01JD2XCFOPHONE001');
+    expect(result.details?.signedAt).toBe('2026-11-20T14:15:00+05:30');
+    expect(result.details?.keySecurityLevel).toBe('StrongBox');
   });
 
-  it('rejects verification if canonical_b64 has been tampered with', async () => {
-    const keyPair = await crypto.subtle.generateKey(
+  it('fails if an attacker swaps the device public key in outer JSON', async () => {
+    const { mandate } = await createValidFixture();
+
+    // Attacker generates rogue key pair
+    const rogueKey = await crypto.subtle.generateKey(
       { name: 'ECDSA', namedCurve: 'P-256' },
       true,
       ['sign', 'verify'],
     );
-    const spki = await crypto.subtle.exportKey('spki', keyPair.publicKey);
-    const spkiB64 = bytesToBase64(new Uint8Array(spki));
+    const rogueSpki = await crypto.subtle.exportKey('spki', rogueKey.publicKey);
+    const rogueSpkiB64 = bytesToBase64(new Uint8Array(rogueSpki));
 
-    const originalBytes = new TextEncoder().encode(JSON.stringify({ amount_paise: '1000' }));
-    const signature = await crypto.subtle.sign(
-      { name: 'ECDSA', hash: { name: 'SHA-256' } },
-      keyPair.privateKey,
-      originalBytes,
-    );
-
-    // Tampered canonical payload
-    const tamperedBytes = new TextEncoder().encode(JSON.stringify({ amount_paise: '9999' }));
-    const tamperedB64 = bytesToBase64(tamperedBytes);
-
-    const mandate = {
-      mandate_id: 'pm_tampered',
-      canonical_b64: tamperedB64,
-      approval: {
-        approver: 'cfo@acme.example',
-        signature: bytesToBase64(new Uint8Array(signature)),
-        public_key: spkiB64,
-      },
-      countersignature: {
-        kms_key_version: 'mandate-signer/1',
-        signature: bytesToBase64(new Uint8Array(signature)),
-        public_key: spkiB64,
-      },
+    // Attacker puts rogue key into outer JSON approval.public_key
+    mandate.approval = {
+      approver: 'cfo@acme.example',
+      signature: mandate.approval?.signature,
+      public_key: rogueSpkiB64,
     };
 
-    const result = await verifyMandate(mandate);
-    expect(result.status).toBe('invalid_signature');
+    // The verifier must ignore the outer public_key, use device_public_key from mandate_b64,
+    // and verify the authentic approver signature against the genuine key
+    const resultWithGenuineSig = await verifyMandate(mandate);
+    expect(resultWithGenuineSig.status).toBe('valid');
+
+    // If the attacker replaces the signature with one signed by rogueKey:
+    const rogueSummarySig = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      rogueKey.privateKey,
+      decodeSummaryB64(mandate.summary_b64!).bytes as unknown as BufferSource,
+    );
+    mandate.approval.signature = bytesToBase64(new Uint8Array(rogueSummarySig));
+
+    const resultWithRogueSig = await verifyMandate(mandate);
+    // MUST FAIL because device public key is taken ONLY from mandate_b64, not from outer JSON!
+    expect(resultWithRogueSig.status).toBe('invalid_signature');
+    expect(resultWithRogueSig.message).toContain('Approver signature verification failed');
   });
 
-  it('detects expired mandate', async () => {
-    const canonicalPayload = {
-      mandate_id: 'pm_expired',
-      amount_paise: '5000',
-      expires_at: '2020-01-01T00:00:00Z',
-    };
-    const canonicalB64 = bytesToBase64(new TextEncoder().encode(JSON.stringify(canonicalPayload)));
+  it('fails if summary_b64 hash does not match summary_sha256 in mandate_b64', async () => {
+    const { mandate, approverKey } = await createValidFixture();
 
-    const mandate = {
-      mandate_id: 'pm_expired',
-      canonical_b64: canonicalB64,
-      expires_at: '2020-01-01T00:00:00Z',
-      approval: { signature: 'AAAA' },
-      countersignature: { signature: 'BBBB' },
+    // Attacker swaps summary with a different amount and signs it with approverKey
+    const fraudulentSummary = {
+      payee: {
+        name_at_bank: 'Authentic Vendor Pvt Ltd',
+        account_last4: '4321',
+        ifsc: 'HDFC0001234',
+      },
+      amount_paise: '9999999999', // Fraudulent amount
+      currency: 'INR',
     };
+    const fraudulentBytes = new TextEncoder().encode(JSON.stringify(fraudulentSummary));
+    mandate.summary_b64 = bytesToBase64(fraudulentBytes);
+
+    const fraudulentSig = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      approverKey.privateKey,
+      fraudulentBytes,
+    );
+    mandate.approval = {
+      ...mandate.approval,
+      signature: bytesToBase64(new Uint8Array(fraudulentSig)),
+    };
+
+    // Must fail closed because SHA-256(summary_b64) does not match mandate_b64.summary_sha256
+    const result = await verifyMandate(mandate);
+    expect(result.status).toBe('invalid_signature');
+    expect(result.message).toContain('Summary hash mismatch');
+  });
+
+  it('fails if mandate_b64 is tampered after KMS countersigning', async () => {
+    const { mandate } = await createValidFixture();
+
+    // Attacker tampers with mandate_b64 payload (lowering tier from 2 to 0)
+    const decoded = decodeMandateB64(mandate.mandate_b64!);
+    decoded.data.tier = 0;
+    const tamperedBytes = new TextEncoder().encode(JSON.stringify(decoded.data));
+    mandate.mandate_b64 = bytesToBase64(tamperedBytes);
+
+    // Must fail closed because KMS countersignature over mandate_b64 is invalid
+    const result = await verifyMandate(mandate);
+    expect(result.status).toBe('invalid_signature');
+    expect(result.message).toContain('KMS countersignature verification failed');
+  });
+
+  it('fails if mandate is expired inside mandate_b64', async () => {
+    const { mandate, kmsKey } = await createValidFixture();
+
+    // Build expired mandate_b64
+    const decodedMandate = decodeMandateB64(mandate.mandate_b64!);
+    decodedMandate.data.expires_at = '2020-01-01T00:00:00Z';
+    const expiredBytes = new TextEncoder().encode(JSON.stringify(decodedMandate.data));
+    mandate.mandate_b64 = bytesToBase64(expiredBytes);
+
+    // Re-sign with KMS so countersignature is valid, but expiry check triggers
+    const kmsSig = await crypto.subtle.sign(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      kmsKey.privateKey,
+      expiredBytes,
+    );
+    mandate.countersignature!.signature = bytesToBase64(new Uint8Array(kmsSig));
 
     const result = await verifyMandate(mandate);
     expect(result.status).toBe('expired');
+    expect(result.message).toContain('Mandate expired');
   });
 });

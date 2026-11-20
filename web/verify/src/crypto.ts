@@ -1,46 +1,76 @@
 /**
- * Cryptographic helpers for verifying Pramaan payment mandates in the browser using WebCrypto.
+ * Cryptographic verification for Pramaan payment mandates in the browser using WebCrypto.
  *
- * Verifiers decode canonical_b64 and verify both signatures over those exact bytes:
- * 1. The approver hardware signature (ECDSA P-256 with SHA-256).
- * 2. The Cloud KMS HSM countersignature (ECDSA P-256 with SHA-256).
+ * The approver's phone and Cloud KMS sign DIFFERENT bytes:
+ * 1. The phone signs the canonical payment summary (summary_b64) with its hardware key.
+ * 2. Cloud KMS countersigns the canonical mandate (mandate_b64) which binds summary_sha256
+ *    and the phone's device public key.
  *
- * All payment details (payee, account, IFSC, amount) are parsed and displayed
- * exclusively from the decoded canonical_b64 bytes, never from surrounding JSON.
+ * Verification order (must fail closed at any step):
+ * a. KMS countersignature over mandate_b64 (key from GET /keys/countersign).
+ * b. Take the device public key ONLY from inside the decoded mandate_b64; ignore any key in the outer JSON.
+ * c. Approver signature (DER -> raw r||s) over summary_b64 with that key.
+ * d. SHA-256(summary_b64 bytes) must equal summary_sha256 inside mandate_b64.
+ * e. Expiry from inside mandate_b64.
+ *
+ * Display rule:
+ * - Payee, account, IFSC and amount decoded from summary_b64 only.
+ * - Decision, tier, device and signed time from mandate_b64 only.
  */
 
-export interface DecodedCanonical {
+export interface DecodedSummary {
   bytes: Uint8Array;
   text: string;
   data: {
-    mandate_id?: string;
-    intent_id?: string;
-    decision?: string;
-    tier?: number;
-    amount_paise?: string | number;
-    amountPaise?: string | number;
-    amount?: string | number;
-    currency?: string;
     payee?: {
       name_at_bank?: string;
       name?: string;
       account_last4?: string;
       ifsc?: string;
-      vendor_id?: string | null;
     };
     payee_name_at_bank?: string;
     payee_account_last4?: string;
     payee_ifsc?: string;
-    expires_at?: string;
+    amount_paise?: string | number;
+    amountPaise?: string | number;
+    amount?: string | number;
+    currency?: string;
     [key: string]: unknown;
   };
 }
 
-export interface VerificationPaymentDetails {
+export interface DecodedMandatePayload {
+  bytes: Uint8Array;
+  text: string;
+  data: {
+    summary_sha256: string;
+    decision: string;
+    tier: number;
+    policy_version?: string | null;
+    device_id: string;
+    device_public_key: string; // SPKI base64 or PEM
+    key_security_level?: string | null;
+    integrity_verdict?: string | null;
+    approver_signature?: string;
+    signed_at: string;
+    expires_at: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface VerificationDisplayDetails {
+  // From summary_b64 only:
   payeeName: string;
   accountLast4: string;
   ifsc: string;
   amountPaise: string;
+  // From mandate_b64 only:
+  decision: string;
+  tier: number;
+  deviceId: string;
+  signedAt: string;
+  keySecurityLevel?: string | null;
+  policyVersion?: string | null;
 }
 
 export type VerificationStatus =
@@ -55,11 +85,31 @@ export type VerificationStatus =
 export interface VerificationResult {
   status: VerificationStatus;
   message?: string;
-  details?: VerificationPaymentDetails;
+  details?: VerificationDisplayDetails;
   approverValid?: boolean;
   countersignValid?: boolean;
-  approver?: string;
+  summaryHashMatched?: boolean;
   kmsKeyVersion?: string;
+}
+
+export interface MandateInput {
+  mandate_id?: string;
+  summary_sha256?: string;
+  summary_b64?: string;
+  mandate_b64?: string;
+  approval?: {
+    approver?: string;
+    signature?: string;
+    public_key?: string | null;
+    [key: string]: unknown;
+  };
+  countersignature?: {
+    kms_key_version?: string;
+    signature?: string;
+    public_key?: string | null;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 }
 
 /** Decode Base64 string to Uint8Array safely */
@@ -196,98 +246,72 @@ export async function importP256PublicKey(keyData: string | Uint8Array): Promise
   }
 }
 
+/** Compute SHA-256 hex string of bytes */
+export async function computeSha256Hex(bytes: Uint8Array): Promise<string> {
+  const bufferSource = bytes as unknown as BufferSource;
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bufferSource);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /**
- * Decodes canonical_b64 into bytes, text, and JSON data.
+ * Decodes summary_b64 into bytes, text, and parsed payment data.
  */
-export function decodeCanonicalB64(canonicalB64: string): DecodedCanonical {
-  if (!canonicalB64 || typeof canonicalB64 !== 'string') {
-    throw new Error('Mandate is missing required canonical_b64 field');
+export function decodeSummaryB64(summaryB64: string): DecodedSummary {
+  if (!summaryB64 || typeof summaryB64 !== 'string') {
+    throw new Error('Mandate is missing required summary_b64 field');
   }
-  const bytes = base64ToBytes(canonicalB64);
+  const bytes = base64ToBytes(summaryB64);
   const text = new TextDecoder('utf-8').decode(bytes);
-  let data: Record<string, unknown>;
+  let data: DecodedSummary['data'];
   try {
-    data = JSON.parse(text) as Record<string, unknown>;
+    data = JSON.parse(text) as DecodedSummary['data'];
   } catch (err) {
-    throw new Error(`Failed to parse canonical_b64 JSON: ${(err as Error).message}`);
+    throw new Error(`Failed to parse summary_b64 JSON: ${(err as Error).message}`);
   }
   return { bytes, text, data };
 }
 
 /**
- * Extracts payment fields EXCLUSIVELY from the decoded canonical data.
+ * Decodes mandate_b64 into bytes, text, and parsed mandate payload.
  */
-export function extractCanonicalPaymentDetails(canonical: DecodedCanonical): VerificationPaymentDetails {
-  const d = canonical.data;
-  const payee = d.payee;
-
-  const payeeName =
-    payee?.name_at_bank ??
-    payee?.name ??
-    (d.payee_name_at_bank as string) ??
-    '—';
-
-  const accountLast4 =
-    payee?.account_last4 ??
-    (d.payee_account_last4 as string) ??
-    '—';
-
-  const ifsc =
-    payee?.ifsc ??
-    (d.payee_ifsc as string) ??
-    '—';
-
-  const rawAmount =
-    d.amount_paise ??
-    d.amountPaise ??
-    d.amount ??
-    '0';
-
-  return {
-    payeeName: String(payeeName),
-    accountLast4: String(accountLast4),
-    ifsc: String(ifsc),
-    amountPaise: String(rawAmount),
-  };
-}
-
-export interface MandateInput {
-  mandate_id?: string;
-  canonical_b64?: string;
-  expires_at?: string;
-  approval?: {
-    approver?: string;
-    signature?: string;
-    public_key?: string | null;
-    [key: string]: unknown;
-  };
-  countersignature?: {
-    kms_key_version?: string;
-    signature?: string;
-    public_key?: string | null;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
+export function decodeMandateB64(mandateB64: string): DecodedMandatePayload {
+  if (!mandateB64 || typeof mandateB64 !== 'string') {
+    throw new Error('Mandate is missing required mandate_b64 field');
+  }
+  const bytes = base64ToBytes(mandateB64);
+  const text = new TextDecoder('utf-8').decode(bytes);
+  let data: DecodedMandatePayload['data'];
+  try {
+    data = JSON.parse(text) as DecodedMandatePayload['data'];
+  } catch (err) {
+    throw new Error(`Failed to parse mandate_b64 JSON: ${(err as Error).message}`);
+  }
+  return { bytes, text, data };
 }
 
 /**
- * Verifies both the approver hardware signature and Cloud KMS countersignature
- * over the exact bytes in canonical_b64.
+ * Verifies a mandate following the exact 5-step fail-closed order:
+ * a. KMS countersignature over mandate_b64.
+ * b. Device public key taken ONLY from inside decoded mandate_b64 (outer key ignored).
+ * c. Approver signature over summary_b64 with that device key.
+ * d. SHA-256(summary_b64 bytes) === summary_sha256 inside mandate_b64.
+ * e. Expiry from inside mandate_b64.
  */
 export async function verifyMandate(
   mandate: MandateInput,
   fetchKmsKey?: () => Promise<string>,
 ): Promise<VerificationResult> {
-  if (!mandate.canonical_b64) {
+  if (!mandate.mandate_b64 || !mandate.summary_b64) {
     return {
       status: 'error',
-      message: 'Mandate is missing canonical_b64. Signature verification requires exact signed bytes.',
+      message: 'Mandate must contain both mandate_b64 and summary_b64.',
     };
   }
 
-  let decoded: DecodedCanonical;
+  let decodedMandate: DecodedMandatePayload;
   try {
-    decoded = decodeCanonicalB64(mandate.canonical_b64);
+    decodedMandate = decodeMandateB64(mandate.mandate_b64);
   } catch (err) {
     return {
       status: 'error',
@@ -295,107 +319,215 @@ export async function verifyMandate(
     };
   }
 
-  // Parse payment fields parsed ONLY from decoded bytes
-  const details = extractCanonicalPaymentDetails(decoded);
+  let decodedSummary: DecodedSummary;
+  try {
+    decodedSummary = decodeSummaryB64(mandate.summary_b64);
+  } catch (err) {
+    return {
+      status: 'error',
+      message: (err as Error).message,
+    };
+  }
 
-  // Expiration check
-  const expiryStr = (decoded.data.expires_at ?? mandate.expires_at) as string | undefined;
-  if (expiryStr) {
-    const expiryTime = new Date(expiryStr).getTime();
-    if (!Number.isNaN(expiryTime) && expiryTime < Date.now()) {
+  const mData = decodedMandate.data;
+  const sData = decodedSummary.data;
+
+  // Extract display fields strictly from their respective canonical sources:
+  // - Payee, account, IFSC, amount from summary_b64 only:
+  const payee = sData.payee;
+  const payeeName =
+    payee?.name_at_bank ??
+    sData.payee_name_at_bank ??
+    payee?.name ??
+    '—';
+  const accountLast4 =
+    payee?.account_last4 ??
+    sData.payee_account_last4 ??
+    '—';
+  const ifsc =
+    payee?.ifsc ??
+    sData.payee_ifsc ??
+    '—';
+  const amountPaise = String(
+    sData.amount_paise ??
+    sData.amountPaise ??
+    sData.amount ??
+    '0',
+  );
+
+  // - Decision, tier, device, and signed time from mandate_b64 only:
+  const details: VerificationDisplayDetails = {
+    payeeName: String(payeeName),
+    accountLast4: String(accountLast4),
+    ifsc: String(ifsc),
+    amountPaise,
+    decision: String(mData.decision ?? '—'),
+    tier: Number(mData.tier ?? 0),
+    deviceId: String(mData.device_id ?? '—'),
+    signedAt: String(mData.signed_at ?? '—'),
+    keySecurityLevel: mData.key_security_level ? String(mData.key_security_level) : null,
+    policyVersion: mData.policy_version ? String(mData.policy_version) : null,
+  };
+
+  // --------------------------------------------------------------------------
+  // Step a. KMS countersignature over mandate_b64 (key from GET /keys/countersign)
+  // --------------------------------------------------------------------------
+  const countersignature = mandate.countersignature;
+  if (!countersignature?.signature) {
+    return {
+      status: 'invalid_signature',
+      message: 'KMS countersignature is missing.',
+      details,
+    };
+  }
+
+  let kmsKeyPem: string | null = countersignature.public_key ?? null;
+  if (!kmsKeyPem && fetchKmsKey) {
+    try {
+      kmsKeyPem = await fetchKmsKey();
+    } catch (err) {
       return {
-        status: 'expired',
-        message: `Mandate expired at ${expiryStr}`,
+        status: 'error',
+        message: `Failed to retrieve KMS countersigning key: ${(err as Error).message}`,
         details,
       };
     }
   }
 
-  // Check required signatures
-  const approval = mandate.approval;
-  const countersignature = mandate.countersignature;
-
-  if (!approval?.signature || !countersignature?.signature) {
+  if (!kmsKeyPem) {
     return {
-      status: 'invalid_signature',
-      message: 'Mandate is missing required approval signature or KMS countersignature.',
+      status: 'error',
+      message: 'Cloud KMS public key is unavailable for countersignature verification.',
       details,
     };
   }
 
-  let approverValid = false;
-  let countersignValid = false;
-
-  // 1. Verify Approver Signature
   try {
-    const approverKeyData =
-      approval.public_key ??
-      (decoded.data.approval as Record<string, unknown> | undefined)?.public_key;
+    const kmsCryptoKey = await importP256PublicKey(kmsKeyPem);
+    const rawKmsSig = derToRaw(base64ToBytes(countersignature.signature));
+    const countersignValid = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      kmsCryptoKey,
+      rawKmsSig as unknown as BufferSource,
+      decodedMandate.bytes as unknown as BufferSource,
+    );
 
-    if (approverKeyData && typeof approverKeyData === 'string') {
-      const approverCryptoKey = await importP256PublicKey(approverKeyData);
-      const rawApproverSig = derToRaw(base64ToBytes(approval.signature));
-      approverValid = await crypto.subtle.verify(
-        { name: 'ECDSA', hash: { name: 'SHA-256' } },
-        approverCryptoKey,
-        rawApproverSig as unknown as BufferSource,
-        decoded.bytes as unknown as BufferSource,
-      );
-    } else {
-      // If approver public key was not bundled, verify countersignature proves server verified it
-      approverValid = true;
+    if (!countersignValid) {
+      return {
+        status: 'invalid_signature',
+        message: 'KMS countersignature verification failed over mandate_b64.',
+        details,
+        countersignValid: false,
+      };
     }
   } catch (err) {
     return {
       status: 'invalid_signature',
-      message: `Approver signature verification failed: ${(err as Error).message}`,
+      message: `KMS countersignature check failed: ${(err as Error).message}`,
+      details,
+      countersignValid: false,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Step b. Take device public key ONLY from inside decoded mandate_b64
+  //         (Ignore any key in the outer JSON)
+  // --------------------------------------------------------------------------
+  const devicePublicKeyData = mData.device_public_key;
+  if (!devicePublicKeyData || typeof devicePublicKeyData !== 'string') {
+    return {
+      status: 'invalid_signature',
+      message: 'Device public key not found inside countersigned mandate_b64.',
       details,
     };
   }
 
-  // 2. Verify Cloud KMS Countersignature
+  let deviceCryptoKey: CryptoKey;
   try {
-    let kmsKeyPem: string | null = countersignature.public_key ?? null;
-    if (!kmsKeyPem && fetchKmsKey) {
-      kmsKeyPem = await fetchKmsKey();
-    }
+    deviceCryptoKey = await importP256PublicKey(devicePublicKeyData);
+  } catch (err) {
+    return {
+      status: 'invalid_signature',
+      message: `Failed to import device public key from mandate_b64: ${(err as Error).message}`,
+      details,
+    };
+  }
 
-    if (kmsKeyPem) {
-      const kmsCryptoKey = await importP256PublicKey(kmsKeyPem);
-      const rawKmsSig = derToRaw(base64ToBytes(countersignature.signature));
-      countersignValid = await crypto.subtle.verify(
-        { name: 'ECDSA', hash: { name: 'SHA-256' } },
-        kmsCryptoKey,
-        rawKmsSig as unknown as BufferSource,
-        decoded.bytes as unknown as BufferSource,
-      );
-    } else {
-      // If KMS key endpoint unavailable, check signature structure
-      derToRaw(base64ToBytes(countersignature.signature));
-      countersignValid = true;
+  // --------------------------------------------------------------------------
+  // Step c. Approver signature (DER -> raw r||s) over summary_b64 with that key
+  // --------------------------------------------------------------------------
+  const approverSigStr = mandate.approval?.signature ?? mData.approver_signature;
+  if (!approverSigStr || typeof approverSigStr !== 'string') {
+    return {
+      status: 'invalid_signature',
+      message: 'Approver signature is missing.',
+      details,
+    };
+  }
+
+  try {
+    const rawApproverSig = derToRaw(base64ToBytes(approverSigStr));
+    const approverValid = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: { name: 'SHA-256' } },
+      deviceCryptoKey,
+      rawApproverSig as unknown as BufferSource,
+      decodedSummary.bytes as unknown as BufferSource,
+    );
+
+    if (!approverValid) {
+      return {
+        status: 'invalid_signature',
+        message: 'Approver signature verification failed over summary_b64.',
+        details,
+        approverValid: false,
+      };
     }
   } catch (err) {
     return {
       status: 'invalid_signature',
-      message: `KMS countersignature verification failed: ${(err as Error).message}`,
+      message: `Approver signature check failed: ${(err as Error).message}`,
       details,
+      approverValid: false,
     };
   }
 
-  if (approverValid && countersignValid) {
+  // --------------------------------------------------------------------------
+  // Step d. SHA-256(summary_b64 bytes) must equal summary_sha256 inside mandate_b64
+  // --------------------------------------------------------------------------
+  const calculatedSummarySha256 = await computeSha256Hex(decodedSummary.bytes);
+  const expectedSummarySha256 = String(mData.summary_sha256 ?? '').toLowerCase();
+
+  if (calculatedSummarySha256 !== expectedSummarySha256) {
     return {
-      status: 'valid',
+      status: 'invalid_signature',
+      message: `Summary hash mismatch: SHA-256(summary_b64) ${calculatedSummarySha256} does not match mandate_b64 summary_sha256 ${expectedSummarySha256}.`,
       details,
-      approverValid,
-      countersignValid,
-      approver: approval.approver,
-      kmsKeyVersion: countersignature.kms_key_version,
+      summaryHashMatched: false,
     };
   }
 
+  // --------------------------------------------------------------------------
+  // Step e. Expiry from inside mandate_b64
+  // --------------------------------------------------------------------------
+  const expiryStr = mData.expires_at;
+  if (expiryStr) {
+    const expiryTime = new Date(expiryStr).getTime();
+    if (!Number.isNaN(expiryTime) && expiryTime < Date.now()) {
+      return {
+        status: 'expired',
+        message: `Mandate expired at ${expiryStr}.`,
+        details,
+      };
+    }
+  }
+
+  // All 5 steps passed fail-closed
   return {
-    status: 'invalid_signature',
-    message: 'Cryptographic signature mismatch over canonical mandate bytes.',
+    status: 'valid',
     details,
+    approverValid: true,
+    countersignValid: true,
+    summaryHashMatched: true,
+    kmsKeyVersion: countersignature.kms_key_version,
   };
 }

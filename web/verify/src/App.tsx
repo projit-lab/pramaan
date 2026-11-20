@@ -4,8 +4,9 @@
  * What a person can do here: paste a mandate id or a mandate JSON, and have their
  * own browser check the Cloud KMS countersignature and approver signature with WebCrypto.
  *
- * All payment details (payee, account, IFSC, amount) are parsed and displayed
- * exclusively from the decoded canonical_b64 bytes, never from surrounding JSON.
+ * The approver's phone and Cloud KMS sign DIFFERENT bytes:
+ * - Payee, account, IFSC and amount are decoded from summary_b64 only.
+ * - Decision, tier, device and signed time are decoded from mandate_b64 only.
  */
 
 import { Money } from '@pramaan/shared/components/Money';
@@ -95,9 +96,9 @@ export function App(): ReactNode {
         <div>
           <h1 className="pr-h1">Verify a Pramaan mandate</h1>
           <p className="pr-muted">
-            Check that a payment really was approved by an enrolled approver, and
-            countersigned by Pramaan. The check runs in your browser, so you do not
-            have to trust Pramaan&rsquo;s servers or ours.
+            Check that a payment really was approved by an enrolled approver phone, and
+            countersigned by Pramaan&rsquo;s Cloud KMS HSM. The check runs in your browser,
+            so you do not have to trust Pramaan&rsquo;s servers or ours.
           </p>
         </div>
 
@@ -158,7 +159,7 @@ export function App(): ReactNode {
                 id="mandate-json"
                 className="pr-textarea"
                 rows={10}
-                placeholder='{"type":"pramaan.payment_mandate.v1", "canonical_b64":"...", ...}'
+                placeholder='{"type":"pramaan.payment_mandate.v1", "summary_b64":"...", "mandate_b64":"...", ...}'
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 spellCheck={false}
@@ -196,14 +197,18 @@ export function App(): ReactNode {
               How verification works
             </h2>
             <p>
-              When you click Verify, your browser decodes the canonical mandate bytes,
-              verifies the approver&rsquo;s hardware key signature and Cloud KMS countersignature
-              over those bytes using WebCrypto, and parses payment details directly
-              from the signed bytes.
+              When you click Verify, your browser executes a 5-step fail-closed verification:
             </p>
+            <ol className="pr-stack" style={{ margin: 0, paddingLeft: '1.25rem', gap: '0.5rem' }}>
+              <li>Verifies Cloud KMS countersignature over <code className="pr-mono">mandate_b64</code>.</li>
+              <li>Extracts the device public key ONLY from inside <code className="pr-mono">mandate_b64</code> (ignoring outer JSON).</li>
+              <li>Verifies the approver&rsquo;s signature over <code className="pr-mono">summary_b64</code> with that device key.</li>
+              <li>Ensures <code className="pr-mono">SHA-256(summary_b64)</code> equals <code className="pr-mono">summary_sha256</code> bound inside the mandate.</li>
+              <li>Validates expiration timestamp from inside <code className="pr-mono">mandate_b64</code>.</li>
+            </ol>
             <p className="pr-fineprint">
-              It will say one of four things: valid, invalid signature, expired, or not
-              found &mdash; and nothing else.
+              Payment details are parsed from <code className="pr-mono">summary_b64</code> only.
+              Decision, tier, and device are parsed from <code className="pr-mono">mandate_b64</code> only.
             </p>
           </section>
         ) : null}
@@ -219,12 +224,15 @@ export function App(): ReactNode {
 
             <p className="pr-fineprint">
               Cryptographic proof verified with WebCrypto. Both the approver hardware signature
-              and Cloud KMS countersignature match the exact canonical mandate bytes.
+              and Cloud KMS countersignature were independently verified over their respective canonical bytes.
             </p>
 
+            <h3 className="pr-h3" style={{ marginTop: '0.5rem' }}>
+              Payment Details (from <code className="pr-mono">summary_b64</code>)
+            </h3>
             <table className="pr-table">
               <caption className="pr-visually-hidden">
-                Payment details parsed from decoded canonical mandate bytes
+                Payment details parsed from decoded summary_b64 bytes
               </caption>
               <thead>
                 <tr>
@@ -246,9 +254,44 @@ export function App(): ReactNode {
               </tbody>
             </table>
 
+            <h3 className="pr-h3" style={{ marginTop: '0.75rem' }}>
+              Governance Proof (from <code className="pr-mono">mandate_b64</code>)
+            </h3>
+            <table className="pr-table">
+              <caption className="pr-visually-hidden">
+                Governance metadata parsed from decoded mandate_b64 bytes
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Decision</th>
+                  <th scope="col">Tier</th>
+                  <th scope="col">Approver Device</th>
+                  <th scope="col">Signed At</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <span className="pr-badge pr-badge--green">{result.details.decision}</span>
+                  </td>
+                  <td>Tier {result.details.tier}</td>
+                  <td>
+                    <code className="pr-mono">{result.details.deviceId}</code>
+                    {result.details.keySecurityLevel ? (
+                      <span className="pr-fineprint" style={{ display: 'block' }}>
+                        {result.details.keySecurityLevel}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td>{result.details.signedAt}</td>
+                </tr>
+              </tbody>
+            </table>
+
             <p className="pr-fineprint" style={{ color: 'var(--pr-color-text-muted)' }}>
-              Note: All payment details above are parsed directly from the verified
-              <code className="pr-mono"> canonical_b64</code> bytes, never from surrounding JSON.
+              Note: All payment fields are parsed directly from <code className="pr-mono">summary_b64</code>,
+              and all governance fields are parsed directly from <code className="pr-mono">mandate_b64</code>.
+              Outer JSON values are never used for display.
             </p>
           </section>
         ) : null}
@@ -262,8 +305,9 @@ export function App(): ReactNode {
               <span className="pr-badge pr-badge--red">Invalid</span>
             </div>
             <p>
-              The cryptographic signature does not match the canonical mandate bytes.
-              The mandate or signature may have been altered in transit.
+              Cryptographic verification failed. Either a signature mismatch occurred,
+              the summary hash differed from the countersigned mandate, or an unauthorized
+              key was used.
             </p>
             {result.message ? (
               <p className="pr-fineprint pr-error">{result.message}</p>
@@ -280,7 +324,7 @@ export function App(): ReactNode {
               <span className="pr-badge pr-badge--amber">Expired</span>
             </div>
             <p>
-              This mandate was genuine, but its validity window has passed.
+              This mandate was genuine, but its validity window specified in <code className="pr-mono">mandate_b64</code> has passed.
             </p>
             {result.message ? (
               <p className="pr-fineprint">{result.message}</p>
