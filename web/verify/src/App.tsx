@@ -1,36 +1,54 @@
 /**
- * The public mandate verifier, M0 shell.
+ * The public mandate verifier.
  *
- * What a person can do here: paste a mandate id or a mandate JSON, and have their
- * own browser check the Cloud KMS countersignature with WebCrypto. The point is
- * that it does not take Pramaan's word for anything: a breach of our servers
- * cannot forge a countersignature that this page would accept.
+ * An auditor or a payee pastes a mandate, or follows a link with its id, and
+ * their own browser checks Pramaan's Cloud KMS countersignature with WebCrypto.
+ * The point of this page is that it does not take Pramaan's word for anything: a
+ * breach of our servers cannot forge a countersignature this page would accept,
+ * because the signing key never leaves Cloud HSM.
  *
- * M0 builds the shell, the input, the disabled-until-valid Verify button and all
- * four result states. The cryptographic check itself lands in M2 and is honestly
- * marked as not yet running, because a verifier that said "valid" without
- * checking would be the single most dishonest screen we could ship.
- *
- * Two things M2 needs, both already flagged to Prajit:
- *   - GET /mandates/{id} must return canonical_b64, the exact bytes that were
- *     countersigned, so this page hashes those bytes instead of re-implementing
- *     canonicalisation in TypeScript and drifting from Kotlin and Python.
- *   - Cloud KMS returns a DER signature; WebCrypto wants raw r||s, 64 bytes. The
- *     conversion happens here.
+ * No sign-in and no Firebase. Everything here is deep-imported so the bundle
+ * carries no auth SDK.
  */
 
-// Deep import, not the @pramaan/shared barrel: the barrel re-exports the Firebase
-// modules, whose side effects defeat tree-shaking, and this public page must not
-// ship a Firebase SDK it never uses.
+import { publicApi } from '@pramaan/shared/api/public';
+import { problemMessage, toProblem } from '@pramaan/shared/api/problem';
 import { PramaanMark } from '@pramaan/shared/components/PramaanMark';
-import { type ReactNode, useState } from 'react';
+import { formatMoney } from '@pramaan/shared/format/money';
+import { formatIst } from '@pramaan/shared/format/time';
+import { maskAccount } from '@pramaan/shared/format/account';
+import {
+  type VerificationResult,
+  verifyCountersignature,
+} from '@pramaan/shared/mandate/verify';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 
 type Mode = 'id' | 'json';
 
-/**
- * The console links here as /?mandate=pm_... so an auditor lands with the id
- * already filled in. Read once, at first render.
- */
+/** Only the fields this page displays. The rest of the mandate rides along. */
+interface MandateShape {
+  mandate_id?: string;
+  type?: string;
+  intent_id?: string;
+  summary_sha256?: string;
+  canonical_b64?: string;
+  decision?: string;
+  tier?: number;
+  amount_paise?: string;
+  payee?: { name_at_bank?: string; account_last4?: string; ifsc?: string };
+  payer?: { company?: string; account_last4?: string };
+  purpose?: { invoice?: string | null };
+  approval?: { approver?: string; signed_at?: string; key_security_level?: string | null };
+  countersignature?: { kms_key_version?: string; signature?: string };
+  expires_at?: string;
+}
+
+interface Outcome {
+  result: VerificationResult;
+  mandate: MandateShape;
+}
+
+/** The console links here as /?mandate=pm_..., so an auditor lands ready to go. */
 function mandateFromQuery(): string {
   try {
     return new URLSearchParams(window.location.search).get('mandate')?.trim() ?? '';
@@ -42,9 +60,92 @@ function mandateFromQuery(): string {
 export function App(): ReactNode {
   const [mode, setMode] = useState<Mode>('id');
   const [value, setValue] = useState(mandateFromQuery);
+  const [busy, setBusy] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [notFound, setNotFound] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const trimmed = value.trim();
-  const canVerify = trimmed.length > 0;
+  const canVerify = trimmed.length > 0 && !busy;
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    setNotFound(null);
+    setFailure(null);
+
+    try {
+      let mandate: MandateShape;
+
+      if (mode === 'json') {
+        try {
+          mandate = JSON.parse(trimmed) as MandateShape;
+        } catch {
+          setFailure('That is not valid JSON. Paste the whole mandate, including its braces.');
+          return;
+        }
+      } else {
+        const { data, error, response } = await publicApi().GET('/mandates/{mandateId}', {
+          params: { path: { mandateId: trimmed } },
+        });
+        if (response?.status === 404) {
+          setNotFound(trimmed);
+          return;
+        }
+        if (error || !data) {
+          setFailure(problemMessage(toProblem(error, response?.status)));
+          return;
+        }
+        mandate = data as MandateShape;
+      }
+
+      const signature = mandate.countersignature?.signature;
+      if (!signature) {
+        setOutcome({
+          result: {
+            outcome: 'cannot_check',
+            detail: 'This mandate carries no countersignature, so there is nothing to check.',
+          },
+          mandate,
+        });
+        return;
+      }
+
+      // The public key comes from the API, but it is the same key an auditor can
+      // fetch themselves and pin. Nothing here is taken on trust from the
+      // mandate itself.
+      const keyResponse = await publicApi().GET('/keys/countersign');
+      if (keyResponse.error || !keyResponse.data?.pem) {
+        setFailure(
+          problemMessage(toProblem(keyResponse.error, keyResponse.response?.status)) +
+            " Pramaan's public key could not be fetched, so the signature was not checked.",
+        );
+        return;
+      }
+
+      const result = await verifyCountersignature({
+        canonicalB64: mandate.canonical_b64 ?? '',
+        signatureB64: signature,
+        publicKeyPem: keyResponse.data.pem,
+        expiresAt: mandate.expires_at ?? null,
+        keyVersion: mandate.countersignature?.kms_key_version ?? null,
+      });
+
+      setOutcome({ result, mandate });
+    } catch (caught) {
+      setFailure(problemMessage(toProblem(caught)));
+    } finally {
+      setBusy(false);
+    }
+  }, [mode, trimmed]);
+
+  // Follow a console link straight through, so the auditor sees a result rather
+  // than a form they have to submit.
+  useEffect(() => {
+    if (mandateFromQuery()) void run();
+    // Deliberately once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="pr-shell">
@@ -121,6 +222,10 @@ export function App(): ReactNode {
                 onChange={(event) => setValue(event.target.value)}
                 spellCheck={false}
               />
+              <p className="pr-fineprint">
+                Pasting works offline for everything except Pramaan&rsquo;s public key,
+                which is still fetched so the signature can be checked.
+              </p>
             </div>
           )}
 
@@ -129,39 +234,159 @@ export function App(): ReactNode {
               type="button"
               className="pr-button pr-button--primary"
               disabled={!canVerify}
-              title={
-                canVerify
-                  ? 'The signature check arrives in M2.'
-                  : 'Enter a mandate id or paste a mandate first.'
-              }
+              onClick={() => void run()}
+              title={canVerify ? undefined : 'Enter a mandate id or paste a mandate first.'}
             >
-              Verify
+              {busy ? 'Checking…' : 'Verify'}
             </button>
-            {canVerify ? (
-              <button type="button" className="pr-button" onClick={() => setValue('')}>
+            {trimmed.length > 0 && !busy ? (
+              <button
+                type="button"
+                className="pr-button"
+                onClick={() => {
+                  setValue('');
+                  setOutcome(null);
+                  setNotFound(null);
+                  setFailure(null);
+                }}
+              >
                 Clear
               </button>
             ) : null}
           </div>
         </section>
 
-        <section className="pr-card pr-stack" aria-labelledby="pending-heading">
-          <h2 id="pending-heading" className="pr-h2">
-            Not verifying yet
-          </h2>
-          <p>
-            This page cannot check a signature until Pramaan&rsquo;s mandate service is
-            live. Rather than show a result it has not computed, it shows nothing.
-          </p>
-          <p className="pr-fineprint">
-            When it does run, it will fetch the mandate and the Cloud KMS public key,
-            convert the DER signature to the raw form WebCrypto expects, and verify
-            ECDSA P-256 with SHA-256 over the exact bytes that were countersigned. It
-            will then say one of four things: valid, invalid signature, expired, or not
-            found &mdash; and nothing else.
-          </p>
-        </section>
+        {failure ? (
+          <section className="pr-card pr-stack" role="alert">
+            <h2 className="pr-h2">Could not check this</h2>
+            <p>{failure}</p>
+            <p className="pr-fineprint">
+              This says nothing about whether the mandate is genuine. It only means the
+              check did not run.
+            </p>
+          </section>
+        ) : null}
+
+        {notFound ? (
+          <section className="pr-card pr-stack" role="alert">
+            <div className="pr-row">
+              <span className="pr-badge pr-badge--grey">Not found</span>
+            </div>
+            <h2 className="pr-h2">Pramaan has no mandate with that id</h2>
+            <p className="pr-muted">
+              Nothing is recorded for <code className="pr-mono">{notFound}</code>. Check the
+              id, or paste the mandate itself instead.
+            </p>
+          </section>
+        ) : null}
+
+        {outcome ? <Result outcome={outcome} /> : null}
       </main>
     </div>
+  );
+}
+
+const RESULT_PRESENTATION: Record<
+  VerificationResult['outcome'],
+  { tone: string; heading: string }
+> = {
+  valid: { tone: 'green', heading: 'This mandate is genuine' },
+  invalid_signature: { tone: 'red', heading: 'This mandate does not check out' },
+  expired: { tone: 'amber', heading: 'Genuine, but expired' },
+  not_found: { tone: 'grey', heading: 'Not found' },
+  cannot_check: { tone: 'grey', heading: 'Could not check this' },
+};
+
+function Result({ outcome }: { outcome: Outcome }): ReactNode {
+  const { result, mandate } = outcome;
+  const presentation = RESULT_PRESENTATION[result.outcome];
+  const payee = mandate.payee;
+
+  return (
+    <section className="pr-card pr-stack" aria-labelledby="result-heading" role="status">
+      <div className="pr-row">
+        <span className={`pr-badge pr-badge--${presentation.tone}`}>
+          {presentation.heading}
+        </span>
+        {mandate.countersignature?.kms_key_version ? (
+          <span className="pr-fineprint">
+            Key version {mandate.countersignature.kms_key_version}
+          </span>
+        ) : null}
+      </div>
+
+      <h2 id="result-heading" className="pr-h2">
+        {presentation.heading}
+      </h2>
+      <p>{result.detail}</p>
+
+      {result.outcome === 'valid' || result.outcome === 'expired' ? (
+        <p className="pr-fineprint">
+          Checked in your browser: ECDSA P-256 with SHA-256, over the exact bytes
+          Pramaan countersigned.
+        </p>
+      ) : null}
+
+      <h3 className="pr-h3">What was signed</h3>
+      <dl className="pr-defs">
+        <dt>Payee</dt>
+        <dd>
+          {payee?.name_at_bank ?? <span className="pr-muted">Not in this mandate</span>}
+          {payee?.account_last4 ? (
+            <span className="pr-fineprint">
+              {maskAccount(payee.account_last4)} {payee.ifsc ? `· ${payee.ifsc}` : ''}
+            </span>
+          ) : null}
+        </dd>
+
+        <dt>Amount</dt>
+        <dd>{mandate.amount_paise ? formatMoney(mandate.amount_paise) : <span className="pr-muted">Not in this mandate</span>}</dd>
+
+        <dt>Purpose</dt>
+        <dd>{mandate.purpose?.invoice ?? <span className="pr-muted">Not recorded</span>}</dd>
+
+        <dt>Approved by</dt>
+        <dd>
+          {mandate.approval?.approver ?? <span className="pr-muted">Not in this mandate</span>}
+          {mandate.approval?.signed_at ? (
+            <span className="pr-fineprint">{formatIst(mandate.approval.signed_at)}</span>
+          ) : null}
+        </dd>
+
+        <dt>Key held in</dt>
+        <dd>
+          {mandate.approval?.key_security_level ?? (
+            <span className="pr-unverified">Couldn&rsquo;t verify</span>
+          )}
+        </dd>
+
+        <dt>Expires</dt>
+        <dd>
+          {mandate.expires_at ? formatIst(mandate.expires_at) : <span className="pr-muted">No expiry recorded</span>}
+        </dd>
+
+        {result.canonicalSha256 ? (
+          <>
+            <dt>Hash of the signed bytes</dt>
+            <dd>
+              <code className="pr-mono">{result.canonicalSha256}</code>
+              {mandate.summary_sha256 ? (
+                <span className="pr-fineprint">
+                  Mandate records summary_sha256 {mandate.summary_sha256}
+                </span>
+              ) : null}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+
+      {result.outcome === 'invalid_signature' ? (
+        <p className="pr-fineprint">
+          This means the details above are not the details Pramaan countersigned, or
+          the signature was not made by Pramaan&rsquo;s key. It does not, by itself,
+          tell you what happened or who did it.
+        </p>
+      ) : null}
+    </section>
   );
 }
