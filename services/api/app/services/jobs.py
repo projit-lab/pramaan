@@ -31,7 +31,7 @@ from app.services.views import aware, ist
 
 
 def close_due_batches(rt: Runtime, now: datetime | None = None) -> list[dict[str, Any]]:
-    now = (now or utc_now(rt)).astimezone(timezone.utc)
+    now = aware(now or utc_now(rt)).astimezone(timezone.utc)
     ttl = timedelta(hours=rt.settings.APPROVAL_TTL_HOURS)
     made: list[tuple[Batch, list[str]]] = []
     with unit_of_work(rt.sessions) as s:
@@ -97,7 +97,7 @@ def close_due_batches(rt: Runtime, now: datetime | None = None) -> list[dict[str
 
 
 def escalate_overdue(rt: Runtime, now: datetime | None = None) -> list[dict[str, Any]]:
-    now = (now or utc_now(rt)).astimezone(timezone.utc)
+    now = aware(now or utc_now(rt)).astimezone(timezone.utc)
     escalate = timedelta(hours=rt.settings.ESCALATE_AFTER_HOURS)
     created: list[tuple[Approval, str]] = []
     with unit_of_work(rt.sessions) as s:

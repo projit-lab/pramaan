@@ -809,6 +809,97 @@ paths:
                     items: {$ref: '#/components/schemas/BatchSummary'}
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /batches/{batchId}:
+    get:
+      tags: [approvals]
+      summary: One batch to sign, with its lines and the canonical batch summary
+      description: |
+        Prajit's signed batch format. The phone signs the bytes of canonical_b64 with one
+        fingerprint. summary_fields = {kind: "batch", batch_id, approver, line_count,
+        total_paise, lines_sha256, nonce, expires_at, window_at, v: "1"}. Each line hash is
+        the SHA-256 (hex) of that payment's canonical summary (the same fields an individual
+        approval signs, with the batch's nonce and expires_at); lines_sha256 is the SHA-256 of
+        the line hashes sorted by intent_id and joined with "\n". Tier 2 and 3 payments are
+        never batched (422).
+      operationId: getBatch
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string, pattern: '^bt_[A-Za-z0-9]+$'}}
+      responses:
+        '200':
+          description: The batch, its lines and the bytes to sign
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batch_id, status, line_count, total_paise, lines, summary_fields, canonical_b64]
+                properties:
+                  batch_id: {type: string}
+                  status: {type: string}
+                  window_at: {type: string}
+                  expires_at: {type: string}
+                  line_count: {type: integer}
+                  total_paise: {type: string}
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        intent_id: {type: string}
+                        payee_name: {type: string}
+                        payee_account_last4: {type: string}
+                        payee_ifsc: {type: string}
+                        amount_paise: {type: string}
+                        purpose: {type: string}
+                        tier: {type: integer}
+                  summary_fields: {type: object, additionalProperties: {type: string}}
+                  canonical_b64: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /batches/{batchId}/decision:
+    post:
+      tags: [approvals]
+      summary: Approve or decline a whole batch with one device signature
+      description: |
+        The server rebuilds the batch summary from the stored payments and verifies the
+        signature with the caller's enrolled device key. Approve issues one KMS-countersigned
+        mandate per line; each mandate's summary_b64 is the signed batch summary, and the gate
+        releases a line only if the payment as it is now hashes to one of the batch's line
+        hashes. Single use.
+      operationId: decideBatch
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string, pattern: '^bt_[A-Za-z0-9]+$'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision, signature]
+              properties:
+                decision: {type: string, enum: [approve, decline]}
+                signature: {type: string, description: DER ECDSA P-256 signature, base64}
+      responses:
+        '200':
+          description: Decided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batch_id: {type: string}
+                  decision: {type: string}
+                  verified: {type: boolean}
+                  line_count: {type: integer}
+                  mandates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        intent_id: {type: string}
+                        mandate_id: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /standing-mandates:
     get:
       tags: [mandates]

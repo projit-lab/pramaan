@@ -15,11 +15,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.adapters.payout import SandboxPayout
 from app.adapters.signer import get_mandate_signer
 from app.db.engine import unit_of_work
-from app.db.models import Mandate, PaymentIntent
+from app.db.models import Batch, Mandate, PaymentIntent
+from app.domain.batch import BATCH_KIND, line_hash, lines_digest
 from app.domain.canonical import canonical_bytes
 from app.domain.ids import new_id
 from app.domain.mandate import MandateInvalid, verify_mandate
 from app.domain.models import AuthenticatedUser
+from app.domain.summary import payment_summary_fields
 from app.errors import ProblemException
 from app.roles import require_roles
 from app.runtime import Runtime, get_runtime, utc_now
@@ -127,26 +129,34 @@ def gate_release(
                 type_=f"https://pramaan.example/problems/{exc.code.replace('_', '-')}",
             ) from exc
 
-        # Tamper check: Recompute canonical summary from CURRENT stored intent in DB
-        current_summary_fields: dict[str, str] = {
-            "amount_paise": str(intent.amount_paise),
-            "currency": str(intent.currency or "INR"),
-            "expires_at": verified.summary_fields.get("expires_at", ""),
-            "initiator": f"{intent.initiator_type}:{intent.initiator_id}",
-            "intent_id": intent.intent_id,
-            "invoice_sha256": intent.invoice_sha256 or "",
-            "nonce": verified.summary_fields.get("nonce", ""),
-            "payee_account": intent.payee_account or intent.payee_account_last4,
-            "payee_ifsc": intent.payee_ifsc,
-            "payee_name": intent.payee_name,
-            "payer_account": intent.payer_account,
-            "purpose": intent.purpose or "",
-            "v": "1",
-        }
-        current_canonical = canonical_bytes(current_summary_fields)
-        current_sha256 = hashlib.sha256(current_canonical).hexdigest().lower()
+        # Tamper check: recompute the signed summary from the payment AS IT IS NOW and
+        # compare it with what the phone signed, taken from the VERIFIED mandate (never
+        # from a database column an attacker with database access could also edit).
+        tampered = verified.mandate_fields.get("intent_id") != intent.intent_id
+        signed = verified.summary_fields
+        if signed.get("kind") == BATCH_KIND:
+            # A batch line: this payment must hash to one of the batch's line hashes,
+            # and those must hash to the lines_sha256 the phone signed.
+            batch = s.get(Batch, signed.get("batch_id", ""))
+            stored = (batch.line_hashes or []) if batch is not None else []
+            current = line_hash(intent, signed.get("nonce", ""), signed.get("expires_at", ""))
+            tampered = (
+                tampered
+                or not stored
+                or lines_digest(stored) != signed.get("lines_sha256")
+                or current not in stored
+            )
+        else:
+            current_sha256 = hashlib.sha256(
+                canonical_bytes(
+                    payment_summary_fields(
+                        intent, signed.get("nonce", ""), signed.get("expires_at", "")
+                    )
+                )
+            ).hexdigest()
+            tampered = tampered or current_sha256 != verified.summary_sha256.lower()
 
-        if current_sha256 != mandate.summary_sha256.lower():
+        if tampered:
             # Tamper detected! Payment must remain held/blocked
             intent.status = "blocked"
             intent.updated_at = now
@@ -158,7 +168,7 @@ def gate_release(
                 actor={"type": "service", "id": "payment_gate"},
                 data={
                     "reason": "mandate_mismatch",
-                    "detail": "Payee account differs from signed summary. Payment stays held.",
+                    "detail": "The payment differs from what the approver signed. It stays held.",
                     "mandate_id": mandate.mandate_id,
                     "blocked_at_step": "verified",
                 },
@@ -177,7 +187,7 @@ def gate_release(
             raise ProblemException(
                 409,
                 "This payment does not match its approval",
-                "The payee account differs from the one that was signed. The payment stays held.",
+                "The payment differs from what the approver signed. The payment stays held.",
                 type_="https://pramaan.example/problems/mandate-mismatch",
             )
 

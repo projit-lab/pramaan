@@ -233,7 +233,7 @@ def decide_approval(
                 "approver": user.email,
                 "key_security_level": device.key_security_level,
                 "patch_level": device.patch_level,
-                "integrity_verdict": "MEETS_STRONG_INTEGRITY",
+                "integrity_verdict": "NOT_EVALUATED",
                 "expires_at": intent.expires_at
                 or (now + timedelta(hours=rt.settings.APPROVAL_TTL_HOURS)),
                 "payer": {
@@ -309,7 +309,7 @@ def decide_approval(
             "device_id": device_id_val,
             "key_security_level": device_sec_level,
             "patch_level": device_patch_level,
-            "device_integrity": "MEETS_STRONG_INTEGRITY",
+            "device_integrity": "NOT_EVALUATED",
             "summary_sha256": summary_sha256_val,
             "verified": True,
         },
