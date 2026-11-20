@@ -88,6 +88,32 @@ curl http://localhost:8080/v1/health
 
 ---
 
+## M2 payment plumbing (Danish)
+
+| Endpoint | What it does |
+| :--- | :--- |
+| `POST /v1/intents` | Validates, scores with policy engine v1, stores, routes holds to approvers, publishes `intent.created` and `intent.decided`, sends the approvers' phones an FCM data message |
+| `GET /v1/intents/{intentId}` | The stored payment (`PaymentIntent`) |
+| `GET /v1/approvals?status=pending` | The signed-in approver's own approvals, riskiest first; expired ones are marked on read |
+| `GET /v1/mandates/{mandateId}` | Public. Serves the mandate document Prajit's mandate service stored |
+| `GET /v1/vendors`, `GET /v1/policies` | Vendor master (with bank-change dates) and the active policy, read-only |
+
+- **System of record** (`app/db/`): companies, approvers, devices, vendors with full bank-account history, payment intents, approvals, mandates, versioned policies. Alembic migrations in `migrations/`; a test fails if the models and the migration drift apart. `ENV=local` uses `.local/pramaan.db` (SQLite) and migrates and seeds it on first request; in the cloud set `DATABASE_URL` to AlloyDB and run `alembic upgrade head` as a deploy step.
+- **Policy engine v1** (`app/domain/policy.py`): six rules (new payee, bank details changed in 30 days, amount thresholds, outside working hours, raised by an agent, instruction by chat or email). Tier 1 on any rule, tier 2 above the tier2 threshold or with three rules together, tier 3 above the tier3 threshold or for a first payment above Rs 10 lakh to an account changed in the last 30 days. Thresholds, hours and the approval matrix come from the stored policy; a broken policy fails closed.
+- **Decline and report** (`app/services/approvals.py`): `block_by_approver()` is what `POST /approvals/{id}/decision` calls after the signature is verified. It sets the payment `declined` or `blocked`, closes the other approvers' requests, publishes `payment.blocked` and updates `holds/{intentId}`. `ENV=local` also mounts `POST /v1/_local/approvals/{id}/block` to drive it without a phone.
+- **Push** (`app/adapters/notifier.py`): the FCM message carries only `approval_id` and `intent_id`, never the payment, and goes only to non-revoked devices with a token.
+
+```powershell
+cd services/api
+pytest -q
+$env:ENV="local"; uvicorn app.main:app --port 8090
+python scripts/m2_smoke.py
+```
+
+Set `PRAMAAN_TEST_PG_URL` to an empty PostgreSQL database to run the schema test against PostgreSQL too.
+
+---
+
 ## Deployment to Cloud Run
 
 The idempotent deployment script is located at `infra/deploy-api.ps1`:
