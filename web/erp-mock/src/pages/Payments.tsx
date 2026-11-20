@@ -1,28 +1,30 @@
 /**
- * The clerk's payments list, live.
+ * The clerk's payment run, live.
  *
- * This is the ERP's own view of what happened to the payments it sent to Pramaan:
- * waiting for approval, released, or stopped. The clerk sees status and nothing
- * else; they cannot approve, and there is no button here that could.
+ * Acme's own view of what happened to the payments it sent to Pramaan. The
+ * clerk sees status and nothing else; they cannot approve, and there is no
+ * button here that could.
+ *
+ * Plain ERP styling, except the status chip, which is Pramaan's and is meant
+ * to look like it came from somewhere else.
  */
 
 import {
   COLLECTIONS,
-  EmptyState,
   ErrorState,
   type Hold,
   type HoldStatus,
   LoadingState,
-  Money,
   StatusBadge,
-  formatIstWithRelative,
+  formatMoney,
   maskAccount,
+  relativeTime,
   useLiveCollection,
 } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
-/** What a clerk is told, in their words rather than Pramaan's. */
+/** What each status means to the person who keyed the payment. */
 const CLERK_WORDING: Record<HoldStatus, string> = {
   held: 'Waiting for approval',
   approved: 'Approved, releasing',
@@ -37,7 +39,7 @@ export function Payments(): ReactNode {
 
   if (status === 'loading') return <LoadingState label="Loading payments" />;
   if (status === 'error') {
-    return <ErrorState title="Could not load payments" error={error} />;
+    return <ErrorState title="We could not load payments" error={error} />;
   }
 
   const rows = [...data].sort(
@@ -45,69 +47,60 @@ export function Payments(): ReactNode {
   );
 
   return (
-    <div className="pr-stack">
-      <div className="pr-spread">
-        <div>
-          <h1 className="pr-h1">Payments</h1>
-          <p className="pr-muted">
-            Outgoing payments and what Pramaan did with each one.
-          </p>
-        </div>
-        <Link to="/new" className="pr-button pr-button--primary">
+    <div>
+      <div className="erp-bar">
+        <h1>Payment run</h1>
+        <Link to="/new" className="erp-btn erp-btn--go" style={{ textDecoration: 'none' }}>
           New payment
         </Link>
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState
-          title="No payments yet"
-          detail="Create one and Pramaan will decide whether it can go straight through."
-        >
-          <Link to="/new" className="pr-button pr-button--primary">
-            New payment
-          </Link>
-        </EmptyState>
+        <div className="erp-empty">
+          No payments yet. Create one and Pramaan will decide whether it can go
+          straight through.
+        </div>
       ) : (
-        <table className="pr-table">
-          <thead>
-            <tr>
-              <th scope="col">Payee</th>
-              <th scope="col">Purpose</th>
-              <th scope="col">Amount</th>
-              <th scope="col">Status</th>
-              <th scope="col">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((payment) => {
-              const created = formatIstWithRelative(payment.createdAt);
-              return (
+        <div className="erp-table-wrap">
+          <table className="erp-table">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Invoice</th>
+                <th>Account</th>
+                <th style={{ textAlign: 'right' }}>Amount (INR)</th>
+                <th>Status</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((payment) => (
                 <tr key={payment.id}>
                   <td>
                     <Link to={`/payments/${payment.id}`}>{payment.payeeNameAtBank}</Link>
-                    <div className="pr-fineprint">
-                      {maskAccount(payment.payeeAccountLast4)}
-                    </div>
                   </td>
-                  <td>{payment.purpose ?? <span className="pr-muted">&mdash;</span>}</td>
-                  <td>
-                    <Money paise={payment.amountPaise} />
+                  <td>{payment.purpose ?? '—'}</td>
+                  <td>{maskAccount(payment.payeeAccountLast4)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {formatMoney(payment.amountPaise, { symbol: false, paise: 'always' })}
                   </td>
                   <td>
                     <StatusBadge status={payment.status} />
-                    <div className="pr-fineprint">{CLERK_WORDING[payment.status]}</div>
+                    <div style={{ fontSize: 11, color: '#5A6169', marginTop: 2 }}>
+                      {CLERK_WORDING[payment.status]}
+                    </div>
                   </td>
-                  <td>{created ? created.relative : <span className="pr-muted">&mdash;</span>}</td>
+                  <td>{relativeTime(payment.createdAt) ?? '—'}</td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <p className="pr-fineprint">
-        An accounts clerk cannot approve a payment in Pramaan. Approvals are signed on
-        the approver&rsquo;s own phone.
+      <p className="erp-hint" style={{ marginTop: 10 }}>
+        An accounts clerk cannot approve a payment in Pramaan. Approvals are signed
+        on the approver&rsquo;s own phone.
       </p>
     </div>
   );

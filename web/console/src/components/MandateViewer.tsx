@@ -1,15 +1,15 @@
 /**
- * The mandate viewer.
+ * The signed mandate, readable and copyable.
  *
- * Finance can read the signed mandate, copy it, and hand it to an auditor who
- * will check it somewhere else entirely. That last part is the point: the copy
- * button exists so the evidence can leave Pramaan and still stand up.
+ * Finance can read it, copy it, and hand it to an auditor who will check it
+ * somewhere else entirely. That last part is the point: the copy button exists
+ * so the evidence can leave Pramaan and still stand up.
  *
- * Collapsed by default. A wall of base64 above the timeline helps nobody, and the
- * people who want it know they want it.
+ * Collapsed by default. A wall of base64 above the timeline helps nobody, and
+ * the people who want it know they want it.
  */
 
-import { api, problemMessage, toProblem } from '@pramaan/shared';
+import { Icon, api, problemMessage, toProblem } from '@pramaan/shared';
 import { type ReactNode, useCallback, useState } from 'react';
 
 export function MandateViewer({ mandateId }: { mandateId: string }): ReactNode {
@@ -53,25 +53,28 @@ export function MandateViewer({ mandateId }: { mandateId: string }): ReactNode {
     } catch {
       // Clipboard access can be refused. Say nothing rather than claim a copy
       // that did not happen; the text is on screen and selectable anyway.
-      setProblem('Could not copy. Select the text and copy it yourself.');
+      setProblem('We could not copy it. Select the text and copy it yourself.');
     }
   }, [json]);
 
   return (
-    <div className="pr-stack">
-      <div className="pr-row">
+    <div className="pm-stack">
+      <div className="pm-row">
         <button
           type="button"
-          className="pr-button pr-button--small"
+          className="pm-btn pm-btn--text"
           onClick={toggle}
           aria-expanded={open}
           aria-controls="mandate-json"
+          style={{ paddingLeft: 0 }}
         >
-          {open ? 'Hide the mandate' : 'Show the mandate'}
+          <Icon name={open ? 'expand_less' : 'expand_more'} size="sm" />
+          {open ? 'Hide the full record' : 'View the full record'}
         </button>
 
         {open && json ? (
-          <button type="button" className="pr-button pr-button--small" onClick={() => void copy()}>
+          <button type="button" className="pm-btn pm-btn--text" onClick={() => void copy()}>
+            <Icon name={copied ? 'check' : 'content_copy'} size="sm" />
             {copied ? 'Copied' : 'Copy'}
           </button>
         ) : null}
@@ -80,18 +83,19 @@ export function MandateViewer({ mandateId }: { mandateId: string }): ReactNode {
       {open ? (
         <div id="mandate-json">
           {loading ? (
-            <p className="pr-muted">Loading the mandate&hellip;</p>
+            <div className="pm-muted">Loading the mandate&hellip;</div>
           ) : problem ? (
-            <div className="pr-error" role="alert">
-              {problem}
+            <div className="pm-banner pm-banner--blocked" role="alert">
+              <Icon name="error" />
+              <div>{problem}</div>
             </div>
           ) : json ? (
             <>
-              <pre className="pr-mono pr-json">{json}</pre>
-              <p className="pr-fineprint">
-                This is the whole signed record. Anyone can check its countersignature
-                on the public verifier without signing in to Pramaan.
-              </p>
+              <pre className="pm-json">{json}</pre>
+              <div className="pm-hint" style={{ marginTop: 'var(--space-2)' }}>
+                Anyone can check this record&rsquo;s countersignature on the public
+                verifier without signing in to Pramaan.
+              </div>
             </>
           ) : null}
         </div>

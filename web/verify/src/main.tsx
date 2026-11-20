@@ -1,5 +1,5 @@
 import '@pramaan/shared/styles/tokens.css';
-import '@pramaan/shared/styles/base.css';
+import '@pramaan/shared/styles/bundle.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';

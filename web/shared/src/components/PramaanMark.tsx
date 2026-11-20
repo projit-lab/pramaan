@@ -1,35 +1,67 @@
 /**
- * The Pramaan wordmark.
+ * The Pramaan logo: a solid blue circle with one white pen stroke ending in a
+ * dot, the moment of signing.
  *
- * Placeholder until the Stitch design lands: inline SVG so it needs no asset and
- * scales on a projector. Replace the glyph and the colours with the Stitch values.
+ * Inline SVG rather than an <img>, so it needs no bundler asset handling and
+ * cannot flash in late on a projector. The same artwork is saved as
+ * assets/pramaan-mark.svg and assets/pramaan-lockup.svg for Android and design.
+ *
+ * Never recolour it red, amber or green.
  */
 
 import type { ReactNode } from 'react';
 
-export function PramaanMark({ size = 32 }: { size?: number }): ReactNode {
+function Glyph({ size }: { size: number }): ReactNode {
   return (
-    <span className="pr-mark">
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 32 32"
-        role="img"
-        aria-label="Pramaan"
-        focusable="false"
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      role="img"
+      aria-label="Pramaan"
+      focusable="false"
+    >
+      <circle cx="32" cy="32" r="30" fill="#0B57D0" />
+      <path
+        d="M17 35c3.6-0.5 5.8 1.8 8.2 6.2 2.7-9.3 8.4-17.3 20.6-23.4"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="46.6" cy="17.4" r="3" fill="#FFFFFF" />
+    </svg>
+  );
+}
+
+/** The mark alone. Smallest usable size is 20px. */
+export function PramaanMark({ size = 32 }: { size?: number }): ReactNode {
+  return <Glyph size={size} />;
+}
+
+/** The mark with the wordmark beside it, in live text. */
+export function PramaanLockup({ size = 32 }: { size?: number }): ReactNode {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+      }}
+    >
+      <Glyph size={size} />
+      <span
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: Math.round(size * 0.66),
+          fontWeight: 500,
+          color: 'var(--ink)',
+          letterSpacing: '-0.01em',
+        }}
       >
-        {/* A seal: a closed ring with a tick, for an approval that was proved. */}
-        <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2.5" />
-        <path
-          d="M10 16.5l4 4 8-8.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className="pr-mark__word">Pramaan</span>
+        Pramaan
+      </span>
     </span>
   );
 }
