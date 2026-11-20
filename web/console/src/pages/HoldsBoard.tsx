@@ -174,16 +174,19 @@ export function HoldsBoard(): ReactNode {
                     >
                       <td>
                         <div className="pm-cell-payee">
-                          <Avatar name={hold.payeeName} size="sm" />
+                          <Avatar name={hold.payeeNameAtBank} size="sm" />
                           <div>
                             <Link
                               to={`/payments/${hold.id}`}
-                              style={{ fontWeight: 500, textDecoration: 'none', color: 'var(--ink)' }}
+                              className="pm-cell-payee__link"
                               onClick={(event) => event.stopPropagation()}
                             >
-                              {hold.payeeName}
+                              {hold.payeeNameAtBank}
+                              {/* The icon is the only thing saying an agent raised
+                                  this, so it carries a label rather than a shape
+                                  alone. */}
                               {hold.initiator?.type === 'agent' ? (
-                                <Icon name="smart_toy" size="sm" />
+                                <Icon name="smart_toy" size="sm" label="Raised by an AI agent" />
                               ) : null}
                             </Link>
                             <div className="pm-mono pm-muted">
@@ -217,7 +220,7 @@ export function HoldsBoard(): ReactNode {
       {newHold ? (
         <div className="pm-toasts">
           <div className="pm-toast" role="status">
-            New hold: {newHold.payeeName}
+            New hold: {newHold.payeeNameAtBank}
           </div>
         </div>
       ) : null}

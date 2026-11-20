@@ -36,14 +36,10 @@ export function App(): ReactNode {
           Devices
         </NavLink>
 
-        <div style={{ flex: 1 }} />
+        <div className="pm-grow" />
 
-        <div style={{ padding: '12px', borderTop: '1px solid var(--line)' }}>
-          {user?.email ? (
-            <div className="pm-hint" style={{ marginBottom: 8, wordBreak: 'break-all' }}>
-              {user.email}
-            </div>
-          ) : null}
+        <div className="pm-side__account">
+          {user?.email ? <div className="pm-hint pm-side__email">{user.email}</div> : null}
           <button
             type="button"
             className="pm-btn pm-btn--text"
