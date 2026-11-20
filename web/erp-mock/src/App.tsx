@@ -16,6 +16,7 @@ import { PramaanMark, RoleGate, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { AgentRun } from './pages/AgentRun';
+import { BankFile } from './pages/BankFile';
 import { NewPayment } from './pages/NewPayment';
 import { PaymentStatus } from './pages/PaymentStatus';
 import { Payments } from './pages/Payments';
@@ -34,6 +35,7 @@ function ErpShell({ children }: { children: ReactNode }): ReactNode {
         </NavLink>
         <NavLink to="/vendors">Vendors</NavLink>
         <NavLink to="/new">New payment</NavLink>
+        <NavLink to="/bank-file">Bank file</NavLink>
         <a href="/bank">Sandbox bank</a>
         <div style={{ flex: 1 }} />
         {user?.email ? (
@@ -120,6 +122,14 @@ export function App(): ReactNode {
         element={
           <ClerkRoute>
             <NewPayment />
+          </ClerkRoute>
+        }
+      />
+      <Route
+        path="/bank-file"
+        element={
+          <ClerkRoute>
+            <BankFile />
           </ClerkRoute>
         }
       />
