@@ -30,6 +30,7 @@ import {
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AttestationCard } from '../components/AttestationCard';
+import { InvoicePanel } from '../components/InvoicePanel';
 import { MandateViewer } from '../components/MandateViewer';
 import { ReasonChips } from '../components/ReasonChips';
 
@@ -155,6 +156,9 @@ export function PaymentDetail(): ReactNode {
         )}
       </section>
 
+      {/* The invoice beside the vendor master. Demo moment 4. */}
+      <InvoicePanel invoice={payment.invoice} />
+
       {/* The attestation card: what signed this, and what we can and cannot vouch for. */}
       <AttestationCard approval={payment.approval} />
 
@@ -178,13 +182,6 @@ export function PaymentDetail(): ReactNode {
             )}
           </dd>
 
-          <dt>Invoice</dt>
-          <dd>
-            <span className="pr-muted">
-              The invoice panel, with the fields Gemini read beside the vendor master,
-              arrives in M3.
-            </span>
-          </dd>
         </dl>
 
         <div className="pr-row">
