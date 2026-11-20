@@ -13,6 +13,7 @@ from app.errors import (
     problem_exception_handler,
     validation_exception_handler,
 )
+from app.adapters.voice_demo import wire_voice_demo
 from app.logging import setup_logging
 from app.routers import (
     approvals,
@@ -23,6 +24,7 @@ from app.routers import (
     local_dev,
     mandates,
     master,
+    voice,
 )
 
 
@@ -73,8 +75,17 @@ def create_app() -> FastAPI:
     # M2+ (Danish): organisation tree, approver hierarchy, batches, standing mandates.
     for module in (intents, approvals, mandates, master, hierarchy):
         app.include_router(module.router, prefix="/v1")
+
+    # M4 (Danish, ported into this layout by Shoaib): the Tier 2 spoken check.
+    # The endpoint exists and is contract-shaped, but its three dependencies are
+    # still in-memory stand-ins, so it is wired only when ENV=local. Putting it
+    # into the real approval flow -- after the Tier 1 signature has verified,
+    # able only to add a check -- is Phase 6.
+    app.include_router(voice.router, prefix="/v1")
+
     if settings.ENV == "local":
         app.include_router(local_dev.router, prefix="/v1")
+        wire_voice_demo(app)
 
     return app
 
