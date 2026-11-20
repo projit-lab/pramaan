@@ -1390,6 +1390,27 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ApprovalEvidence'
             - type: 'null'
+        lane:
+          oneOf:
+            - $ref: '#/components/schemas/Lane'
+            - type: 'null'
+          description: M2+. Null until the lane sorter has run.
+        rule_hit:
+          oneOf:
+            - $ref: '#/components/schemas/RuleHit'
+            - type: 'null'
+          description: M2+. The rule that decided this payment, and its path in the tree.
+        payee_checks:
+          oneOf:
+            - $ref: '#/components/schemas/PayeeCheck'
+            - type: 'null'
+          description: M2+. The automatic checks run before any approver saw it.
+        standing_mandate_id:
+          type: [string, 'null']
+          description: M2+. Set when a standing mandate auto-released this payment.
+        batch_id:
+          type: [string, 'null']
+          description: M2+. Set when this payment was approved as part of a batch.
         mandate_id:
           type: [string, 'null']
         agent_request_id:
@@ -1832,3 +1853,234 @@ components:
                 type: array
                 items:
                   type: string
+    # ---------------------------------------------------------------------
+    # M2+ : fewer approvals, hierarchical rules
+    #
+    # DRAFT, proposed by Shoaib, needs Prajit's and Danish's approval.
+    #
+    # Added after the evaluator feedback on 20 Nov: Pramaan should remove most
+    # approvals and judge each payment on its attributes, with rules that flow
+    # down the organisation. Danish builds the engine, Shoaib builds the
+    # screens, Prajit defines what gets signed and how the gate checks it.
+    #
+    # The screens need three things the current contract cannot express:
+    #   1. which lane a payment landed in, and WHY (the rule and its path);
+    #   2. the organisation tree, so a policy editor can show inheritance;
+    #   3. standing and batch mandates, with their usage against limits.
+    #
+    # Prajit owns the two signed formats below. They are carried here as the
+    # fields the screens must display, not as a definition of what is signed.
+    # ---------------------------------------------------------------------
+    Lane:
+      type: string
+      description: |
+        Which lane a payment was sorted into. First matching row wins, so
+        nothing slips into a lighter lane:
+
+          1. individual_review - any hard flag, or Tier 2 or 3
+          2. auto_release_standing - known payee inside a valid standing mandate
+          3. auto_release - Tier 0, known payee, no flags
+          4. batch - Tier 1, every check passed, no flags
+
+        The order matters and is the engine's contract, not a display choice.
+      enum: [individual_review, auto_release_standing, auto_release, batch]
+    RuleHit:
+      type: object
+      description: |
+        The rule that decided a payment, and where it sits in the organisation
+        tree. Every decision records this, so a finance team can always answer
+        "why was this treated that way, and who set that rule?".
+      required: [rule_id, path]
+      properties:
+        rule_id:
+          type: string
+        path:
+          type: array
+          description: Root to the payment's department, for example group, company, plant, department.
+          items:
+            type: string
+        expression:
+          type: [string, 'null']
+          description: The CEL expression that matched, for the detail view.
+        set_at_node:
+          type: [string, 'null']
+          description: Which node in the path actually set this rule.
+        tightened_from:
+          type: [string, 'null']
+          description: |
+            When a child node tightened a parent's rule, the parent node id.
+            Loosening is rejected by the engine, so this is only ever a tighten.
+    OrgNode:
+      type: object
+      description: |
+        One node of the organisation tree: group, company, plant or department.
+        Read by the policy editor, which shows inherited rules greyed out and
+        blocks an edit that would loosen a parent.
+      required: [node_id, name, kind]
+      properties:
+        node_id:
+          type: string
+        parent_id:
+          type: [string, 'null']
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [group, company, plant, department]
+        rules:
+          type: array
+          items:
+            type: object
+            required: [rule_id, expression]
+            properties:
+              rule_id:
+                type: string
+              expression:
+                type: string
+                description: CEL, the expression language Cloud IAM Conditions use.
+              text:
+                type: string
+                description: The same rule in plain language, for the screen.
+              tier:
+                $ref: '#/components/schemas/Tier'
+              inherited_from:
+                type: [string, 'null']
+                description: Null when this node set it; otherwise the ancestor that did.
+        thresholds_paise:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Paise'
+    ApproverLevel:
+      type: string
+      description: |
+        The approver hierarchy. A tier has a minimum level: Tier 1 needs an AP
+        manager or above, Tier 2 a controller or above, Tier 3 the CFO and the
+        MD. Delegation may never go to someone more junior.
+      enum: [ap_clerk, ap_manager, controller, cfo, md]
+    StandingMandate:
+      type: object
+      description: |
+        A mandate an approver signs once, which then auto-releases matching
+        payments to one payee until a cap is reached or it expires.
+        Any change to the payee's bank details voids it.
+
+        Prajit owns what is signed: payee account hash, IFSC, cap per payment,
+        cap per month, maximum count, expiry and company. The fields here are
+        what the screens display, including usage against the limits.
+      required: [standing_mandate_id, payee, caps, usage, status, expires_at]
+      properties:
+        standing_mandate_id:
+          type: string
+        payee:
+          $ref: '#/components/schemas/Payee'
+        approver:
+          type: string
+        signed_at:
+          $ref: '#/components/schemas/Timestamp'
+        caps:
+          type: object
+          required: [per_payment_paise, per_month_paise, max_count]
+          properties:
+            per_payment_paise:
+              $ref: '#/components/schemas/Paise'
+            per_month_paise:
+              $ref: '#/components/schemas/Paise'
+            max_count:
+              type: integer
+        usage:
+          type: object
+          description: Updated inside a database transaction, so it cannot drift.
+          required: [month_to_date_paise, count]
+          properties:
+            month_to_date_paise:
+              $ref: '#/components/schemas/Paise'
+            count:
+              type: integer
+            last_used_at:
+              type: [string, 'null']
+        status:
+          type: string
+          enum: [active, exhausted, expired, revoked, voided_by_bank_change]
+        revoked_at:
+          type: [string, 'null']
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+    BatchMandate:
+      type: object
+      description: |
+        One signature over the SHA-256 of the sorted list of line hashes. The
+        gate checks a line is inside the signed batch and unused.
+
+        Tier 2 and Tier 3 payments can never be batched. The screens must not
+        offer it, and the gate refuses it regardless.
+      required: [batch_id, lines, total_paise, status]
+      properties:
+        batch_id:
+          type: string
+        approver:
+          type: string
+        signed_at:
+          type: [string, 'null']
+        batch_sha256:
+          type: [string, 'null']
+          description: SHA-256 of the sorted line hashes. Owned by Prajit.
+        total_paise:
+          $ref: '#/components/schemas/Paise'
+        window:
+          type: [string, 'null']
+          description: The approval window that gathered this batch, for example 11:00.
+        status:
+          type: string
+          enum: [gathering, awaiting_signature, signed, released, partially_refused]
+        lines:
+          type: array
+          items:
+            type: object
+            required: [intent_id, amount_paise, payee_name, checks_passed]
+            properties:
+              intent_id:
+                type: string
+              amount_paise:
+                $ref: '#/components/schemas/Paise'
+              payee_name:
+                type: string
+              payee_account_last4:
+                type: string
+              line_sha256:
+                type: [string, 'null']
+              checks_passed:
+                type: boolean
+                description: |
+                  Every automatic payee check passed for this line. False must
+                  never appear in a batch; if it does, the screen shows it and
+                  the line is pulled out for individual review.
+              released:
+                type: [boolean, 'null']
+              refused_reason:
+                type: [string, 'null']
+    PayeeCheck:
+      type: object
+      description: |
+        The automatic checks that run before any approver sees a payment. Their
+        results become attributes the hierarchy rules are evaluated against.
+      properties:
+        name_lookup:
+          type: object
+          description: The name the bank returns for the account, where it offers one.
+          properties:
+            returned_name:
+              type: [string, 'null']
+            matches:
+              type: [boolean, 'null']
+              description: Null means the bank gave no name. Never render null as a pass.
+        lookalike:
+          type: object
+          properties:
+            score:
+              type: [number, 'null']
+            closest_vendor_id:
+              type: [string, 'null']
+            closest_vendor_name:
+              type: [string, 'null']
+        invoice_match:
+          type: [boolean, 'null']

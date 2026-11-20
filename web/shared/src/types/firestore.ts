@@ -132,6 +132,55 @@ export interface ApprovalEvidence {
   nonceFresh?: boolean | null;
 }
 
+/**
+ * M2+. Which lane the sorter put a payment in. First matching row wins, so
+ * nothing slips into a lighter lane:
+ *
+ *   1. individual_review     any hard flag, or Tier 2 or 3
+ *   2. auto_release_standing known payee inside a valid standing mandate
+ *   3. auto_release          Tier 0, known payee, no flags
+ *   4. batch                 Tier 1, every check passed, no flags
+ */
+export type Lane =
+  | 'individual_review'
+  | 'auto_release_standing'
+  | 'auto_release'
+  | 'batch';
+
+/**
+ * M2+. The rule that decided a payment, and where it sits in the organisation
+ * tree. Every screen that shows a lane must be able to answer "why", and this
+ * is the answer.
+ */
+export interface RuleHit {
+  ruleId: string;
+  /** Root to the payment's department. */
+  path: string[];
+  expression?: string | null;
+  setAtNode?: string | null;
+  /** Set when a child node tightened a parent's rule. Loosening is rejected. */
+  tightenedFrom?: string | null;
+}
+
+/**
+ * M2+. The automatic checks run before any approver sees a payment.
+ *
+ * As everywhere else in Pramaan, null is not false: a bank that returned no
+ * name leaves `matches` null, and the screen says "couldn't verify".
+ */
+export interface PayeeChecks {
+  nameLookup?: {
+    returnedName?: string | null;
+    matches?: boolean | null;
+  } | null;
+  lookalike?: {
+    score?: number | null;
+    closestVendorId?: string | null;
+    closestVendorName?: string | null;
+  } | null;
+  invoiceMatch?: boolean | null;
+}
+
 /** holds/{intentId} */
 export interface Hold {
   intentId: string;
@@ -155,6 +204,12 @@ export interface Hold {
   approvers?: string[];
   approver?: string | null;
   approval?: ApprovalEvidence | null;
+  /** M2+. Null until the lane sorter has run. */
+  lane?: Lane | null;
+  ruleHit?: RuleHit | null;
+  payeeChecks?: PayeeChecks | null;
+  standingMandateId?: string | null;
+  batchId?: string | null;
   mandateId?: string | null;
   agentRequestId?: string | null;
   payoutId?: string | null;

@@ -64,6 +64,11 @@ payment status.
 | `approvers` | array of string | work emails from the approval matrix |
 | `approver` | string or null | who actually decided |
 | `approval` | map or null | the signed decision and its attestation evidence; see below. Null until a signature has been verified |
+| `lane` | string or null | **M2+.** `individual_review`, `auto_release_standing`, `auto_release` or `batch`. Null until the lane sorter has run |
+| `ruleHit` | map or null | **M2+.** `{ ruleId, path, expression, setAtNode, tightenedFrom }` — the rule that decided this payment and where it sits in the tree |
+| `payeeChecks` | map or null | **M2+.** the automatic name look-up, look-alike score and invoice match. A null result is "couldn't verify", never a pass |
+| `standingMandateId` | string or null | **M2+.** set when a standing mandate auto-released this payment |
+| `batchId` | string or null | **M2+.** set when this payment was approved inside a batch |
 | `mandateId` | string or null | set once a mandate exists |
 | `agentRequestId` | string or null | set when an agent raised it |
 | `payoutId` | string or null | set once the sandbox bank paid |
