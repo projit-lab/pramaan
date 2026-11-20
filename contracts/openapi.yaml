@@ -637,6 +637,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Mandate'
+              example:
+                mandate_id: pm_01JD2XGENUINE0001
+                type: pramaan.payment_mandate.v1
+                intent_id: pi_01JD2XGENUINE0001
+                summary_sha256: "514981b4f0b1e2f4e8f4e3121862dab34213e233a1d9743620ad8bfcc3d97e54"
+                canonical_b64: "eyJhbW91bnRfcGFpc2UiOiI5ODAwMDAwMCIsImN1cnJlbmN5IjoiSU5SIiwiZXhwaXJlc19hdCI6IjIwMjctMTEtMjFUMTE6NDI6MDcrMDU6MzAiLCJpbml0aWF0b3IiOiJodW1hbjpjbGVya0BhY21lLmV4YW1wbGUiLCJpbnRlbnRfaWQiOiJwaV8wMUpEMlhHRU5VSU5FMDAwMSIsImludm9pY2Vfc2hhMjU2IjoiOWYxYzJiN2E0ZDZlOGYwYTFiMmMzZDRlNWY2MDcxODI5M2E0YjVjNmQ3ZThmOTBhMWIyYzNkNGU1ZjYwNzE4MiIsIm1hbmRhdGVfaWQiOiJwbV8wMUpEMlhHRU5VSU5FMDAwMSIsInBheWVlX2FjY291bnQiOiIwMDAxMjM0NTc3ODEiLCJwYXllZV9pZnNjIjoiQUJDRDAxMjM0NTYiLCJwYXllZV9uYW1lIjoiU3JpIExha3NobWkgQ2FzdGluZ3MiLCJwYXllcl9hY2NvdW50IjoiNTAxMDAwMDQ1MjEiLCJwdXJwb3NlIjoiSU5WLTIyMTkiLCJ2IjoiMSJ9"
+                decision: approve
+                tier: 1
+                policy_version: "2026.11.1"
+                payer:
+                  company: "Acme Auto Components Pvt Ltd"
+                  account_last4: "4521"
+                payee:
+                  name_at_bank: "Sri Lakshmi Castings"
+                  account_last4: "7781"
+                  ifsc: "ABCD0123456"
+                  vendor_id: vd_sri_lakshmi
+                amount_paise: "98000000"
+                currency: INR
+                purpose:
+                  invoice: "INV-2219"
+                  invoice_sha256: "9f1c2b7a4d6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607182"
+                initiator:
+                  type: human
+                  id: "clerk@acme.example"
+                approval:
+                  approver: "cfo@acme.example"
+                  decision: approve
+                  signed_at: "2026-11-18T15:20:41+05:30"
+                  device_id: dv_01JD2XCFOPHONE001
+                  key_security_level: StrongBox
+                  patch_level: "2026-10-01"
+                  device_integrity: MEETS_STRONG_INTEGRITY
+                  signature: "MEUCIQDexampleApproverSignatureOwnedByPrajit"
+                countersignature:
+                  kms_key_version: "mandate-signer/dev-fixture"
+                  signature: "MEYCIQD9n1Up0QQaLlD30BlYyZwbit9eiedUXWJXDaoVsfxFBQIhAIxYUkHVXQLSqBM9zZG7pu162eUrZ35Wj4kdgfL0tijy"
+                  algorithm: EC_SIGN_P256_SHA256
+                signed_at: "2026-11-18T15:20:43+05:30"
+                expires_at: "2027-11-21T11:42:07+05:30"
+                used_at: null
         '404':
           $ref: '#/components/responses/NotFound'
   /keys/countersign:
@@ -665,9 +706,13 @@ paths:
                   key_version:
                     type: string
               example:
-                pem: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----\n"
+                pem: "-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEwxbsUbH63Kfkc3f/uzmF7RVuphNr
+Glkdpw+Hb5zbgidy1w3GwnA36c5GetJb7YueOmvFWRypc+T4F4eidLGDmw==
+-----END PUBLIC KEY-----
+"
                 algorithm: EC_SIGN_P256_SHA256
-                key_version: "mandate-signer/3"
+                key_version: "mandate-signer/dev-fixture"
         '503':
           description: Cloud KMS could not be reached
           content:
