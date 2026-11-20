@@ -32,7 +32,8 @@
     "emulators": "firebase emulators:start --only auth,firestore --project pramaan-dev-515306",
     "seed": "node tools/seed-firestore.mjs",
     "grant-role": "node tools/grant-role.mjs",
-    "rules:test": "npm run test --workspace @pramaan/tools"
+    "rules:test": "npm run test --workspace @pramaan/tools",
+    "vectors:test": "vitest run --root tools tests/canonical-vectors.test.mjs"
   },
   "devDependencies": {
     "@stoplight/prism-cli": "^5.16.0",
