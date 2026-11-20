@@ -150,7 +150,7 @@ def build_mandate(
     device_id = facts.get("device_id", "dv_default")
     approver = facts.get("approver", "approver@example.com")
     key_security_level = facts.get("key_security_level", "StrongBox")
-    integrity_verdict = facts.get("integrity_verdict") or facts.get("device_integrity") or ""
+    integrity_verdict = facts.get("integrity_verdict", "")
     patch_level = facts.get("patch_level")
 
     signed_at_str = _format_timestamp(now)
@@ -344,6 +344,18 @@ def verify_mandate(
         raise MandateInvalid(
             "invalid_mandate_body", f"Failed parsing decoded mandate JSON: {exc}"
         ) from exc
+
+    # Enforce integrity_verdict ONLY inside signed mandate (never device_integrity)
+    if "device_integrity" in mandate_fields:
+        raise MandateInvalid(
+            "invalid_integrity_verdict",
+            "Mandate body uses device_integrity instead of integrity_verdict",
+        )
+    if "integrity_verdict" not in mandate_fields:
+        raise MandateInvalid(
+            "missing_integrity_verdict",
+            "Mandate body must contain integrity_verdict",
+        )
 
     # Step b: Take device_public_key from INSIDE the verified mandate
     device_pubkey_b64 = mandate_fields.get("device_public_key")

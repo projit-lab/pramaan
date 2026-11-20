@@ -1,6 +1,7 @@
 """Tests for device signature verification and dual-signed mandate build & verify."""
 
 import base64
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -104,7 +105,7 @@ def test_built_mandate_verifies(
         "device_id": "dv_01JD2XCFOPHONE001",
         "approver": "cfo@acme.example",
         "key_security_level": "StrongBox",
-        "device_integrity": "MEETS_STRONG_INTEGRITY",
+        "integrity_verdict": "MEETS_STRONG_INTEGRITY",
         "expires_at": now + timedelta(hours=24),
     }
 
@@ -121,9 +122,11 @@ def test_built_mandate_verifies(
 
     verified = verify_mandate(doc, kms_pub_pem, now)
 
+    assert doc.approval["device_integrity"] == "MEETS_STRONG_INTEGRITY"
     assert verified.decision == "approve"
     assert verified.tier == 2
     assert verified.device_id == "dv_01JD2XCFOPHONE001"
+    assert verified.integrity_verdict == "MEETS_STRONG_INTEGRITY"
     assert verified.summary_fields["amount_paise"] == "465000000"
     assert verified.summary_fields["payee_name_at_bank"] == "Global Trade Solutions"
     assert verified.summary_fields["currency"] == "INR"
@@ -250,6 +253,59 @@ def test_expired_mandate_fails_at_step_e(
         verify_mandate(doc, kms_pub_pem, now)
 
     assert exc_info.value.code == "expired"
+
+
+def test_mandate_with_device_integrity_in_signed_body_fails(
+    summary_fields,
+    device_spki_der,
+    device_signature_der,
+    local_signer,
+    now,
+) -> None:
+    """A mandate whose signed body uses device_integrity instead of integrity_verdict fails."""
+    canonical_summary = canonical_bytes(summary_fields)
+    summary_b64 = base64.b64encode(canonical_summary).decode("ascii")
+    summary_sha256 = hashlib.sha256(canonical_summary).hexdigest().lower()
+
+    # Intentionally use device_integrity instead of integrity_verdict in signed body
+    mandate_body = {
+        "approver_signature": base64.b64encode(device_signature_der).decode("ascii"),
+        "decision": "approve",
+        "device_id": "dv_test01",
+        "device_public_key": base64.b64encode(device_spki_der).decode("ascii"),
+        "expires_at": "2099-12-31T23:59:59Z",
+        "device_integrity": "MEETS_STRONG_INTEGRITY",
+        "intent_id": "pi_test01",
+        "issued_at": "2026-11-20T14:15:00+05:30",
+        "key_security_level": "StrongBox",
+        "mandate_id": "pm_test01",
+        "policy_version": "2026.11.1",
+        "signed_at": "2026-11-20T14:15:00+05:30",
+        "summary_sha256": summary_sha256,
+        "tier": "2",
+    }
+
+    canonical_mandate = canonical_bytes(mandate_body)
+    mandate_b64 = base64.b64encode(canonical_mandate).decode("ascii")
+    kms_sig_der, kms_key_version = local_signer.sign_mandate(canonical_mandate)
+    kms_pub_pem, _ = local_signer.get_public_key_pem()
+
+    doc = {
+        "mandate_id": "pm_test01",
+        "intent_id": "pi_test01",
+        "summary_sha256": summary_sha256,
+        "summary_b64": summary_b64,
+        "mandate_b64": mandate_b64,
+        "countersignature": {
+            "kms_key_version": kms_key_version,
+            "signature": base64.b64encode(kms_sig_der).decode("ascii"),
+        },
+    }
+
+    with pytest.raises(MandateInvalid) as exc_info:
+        verify_mandate(doc, kms_pub_pem, now)
+
+    assert exc_info.value.code in ("invalid_integrity_verdict", "missing_integrity_verdict")
 
 
 def test_web_verify_fixtures_if_plain_json() -> None:
