@@ -664,13 +664,17 @@ body {
   color: var(--pr-blocked);
 }
 
+/* A failed spoken check keeps the payment held for a call-back, so it is amber, not red. */
 .pr-timeline__item[data-step='held'] .pr-timeline__step,
-.pr-timeline__item[data-step='pushed'] .pr-timeline__step {
+.pr-timeline__item[data-step='pushed'] .pr-timeline__step,
+.pr-timeline__item[data-step='voice_started'] .pr-timeline__step,
+.pr-timeline__item[data-step='voice_failed'] .pr-timeline__step {
   color: var(--pr-held);
 }
 
 .pr-timeline__item[data-step='signed'] .pr-timeline__step,
 .pr-timeline__item[data-step='verified'] .pr-timeline__step,
+.pr-timeline__item[data-step='voice_verified'] .pr-timeline__step,
 .pr-timeline__item[data-step='countersigned'] .pr-timeline__step {
   color: var(--pr-approved);
 }
