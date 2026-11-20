@@ -12,7 +12,6 @@ import {
   AiLabel,
   COLLECTIONS,
   ChannelBadge,
-  CouldNotVerify,
   EmptyState,
   ErrorState,
   type Hold,
@@ -24,11 +23,13 @@ import {
   TierBadge,
   formatIstWithRelative,
   maskAccount,
+  readEnv,
   useLiveDocument,
   useLiveSubcollection,
 } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AttestationCard } from '../components/AttestationCard';
 import { ReasonChips } from '../components/ReasonChips';
 
 export function PaymentDetail(): ReactNode {
@@ -153,7 +154,9 @@ export function PaymentDetail(): ReactNode {
         )}
       </section>
 
-      {/* Honest placeholders. Not built yet is said out loud. */}
+      {/* The attestation card: what signed this, and what we can and cannot vouch for. */}
+      <AttestationCard approval={payment.approval} />
+
       <section className="pr-card pr-stack" aria-labelledby="evidence-heading">
         <h2 id="evidence-heading" className="pr-h2">
           Evidence
@@ -171,16 +174,6 @@ export function PaymentDetail(): ReactNode {
             )}
           </dd>
 
-          <dt>Attestation</dt>
-          <dd>
-            <CouldNotVerify what="the signing key" />
-            <p className="pr-fineprint">
-              The attestation card arrives in M1, once Prajit&rsquo;s enrolment checks
-              run. Pramaan will not show a security check as passed before it has
-              really run one.
-            </p>
-          </dd>
-
           <dt>Invoice</dt>
           <dd>
             <span className="pr-muted">
@@ -191,14 +184,35 @@ export function PaymentDetail(): ReactNode {
         </dl>
 
         <div className="pr-row">
-          <button type="button" className="pr-button" disabled title="Enabled once a mandate exists">
-            Verify this mandate
-          </button>
+          {payment.mandateId ? (
+            <a
+              className="pr-button"
+              href={`${readEnv().verifyBase}/?mandate=${encodeURIComponent(payment.mandateId)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Verify this mandate
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="pr-button"
+              disabled
+              title="Enabled once a mandate exists"
+            >
+              Verify this mandate
+            </button>
+          )}
+
           <button
             type="button"
             className="pr-button"
-            disabled
-            title="Enabled once a mandate has released this payment"
+            disabled={!payment.payoutId}
+            title={
+              payment.payoutId
+                ? 'Open this payout in the sandbox bank'
+                : 'Enabled once a mandate has released this payment'
+            }
           >
             Open in sandbox bank
           </button>
