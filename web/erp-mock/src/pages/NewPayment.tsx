@@ -1,14 +1,14 @@
 /**
  * New payment, in Acme's own ERP.
  *
- * This is where the boss scam starts. A clerk keys a payment, and the Pay button
- * goes to Pramaan rather than to the bank. Nothing here can approve anything: the
- * clerk's job ends at "sent for approval".
+ * This is where the boss scam starts. A clerk keys a payment, and the Pay
+ * button goes to Pramaan rather than to the bank. Nothing here can approve
+ * anything: the clerk's job ends at "sent for approval".
  *
  * The form carries the facts the policy engine needs to be any good: not just
  * who and how much, but **how the instruction arrived** and **what it said**.
- * Those two fields are what turn "a payment to a new payee" into "a payment to a
- * new payee, asked for on WhatsApp, marked urgent and confidential".
+ * Those two fields turn "a payment to a new payee" into "a payment to a new
+ * payee, asked for on WhatsApp, marked urgent and confidential".
  */
 
 import {
@@ -98,8 +98,6 @@ export function NewPayment(): ReactNode {
     [vendors, vendorId],
   );
 
-  // Validate as we go, so Pay is disabled until the form is actually payable and
-  // the clerk can see why.
   const amountError = useMemo(() => {
     if (amount.trim() === '') return 'Enter an amount.';
     try {
@@ -184,8 +182,8 @@ export function NewPayment(): ReactNode {
    * Hand the invoice to the payables agent instead of keying the payment.
    *
    * The agent reads the invoice, looks the vendor up and asks Pramaan for a
-   * mandate. It cannot release money, and this button does not approve anything.
-   * It needs an uploaded invoice, because reading the invoice is the agent's job.
+   * mandate. It cannot release money, and this button does not approve
+   * anything. It needs an uploaded invoice, because reading it is the job.
    */
   const handToAgent = useCallback(async () => {
     if (!invoice) return;
@@ -216,7 +214,7 @@ export function NewPayment(): ReactNode {
   if (vendorsProblem) {
     return (
       <ErrorState
-        title="Could not load the vendor master"
+        title="We could not load the vendor master"
         error={new Error(vendorsProblem)}
         onRetry={() => void loadVendors()}
       />
@@ -229,31 +227,26 @@ export function NewPayment(): ReactNode {
   const showAmountError = touched['amount'] && amountError;
 
   return (
-    <div className="pr-stack">
-      <div>
-        <h1 className="pr-h1">New payment</h1>
-        <p className="pr-muted">
-          Acme pays from its sandbox bank account. Every payment goes to Pramaan
-          first, and nothing reaches the bank without a matching mandate.
-        </p>
-      </div>
+    <div>
+      <h1>New payment</h1>
+      <p className="erp-hint" style={{ marginBottom: 10 }}>
+        Acme pays from its sandbox bank account. Every payment goes to Pramaan
+        first, and nothing reaches the bank without a matching mandate.
+      </p>
 
       {banner ? (
-        <div className="pr-error" role="alert">
+        <div className="erp-note" role="alert" style={{ borderColor: '#B3261E', background: '#FFF6F5' }}>
           <strong>The payment was not sent.</strong> {banner}
-          <div className="pr-fineprint">Nothing you typed has been lost. Try again.</div>
+          <div className="erp-hint">Nothing you typed has been lost. Try again.</div>
         </div>
       ) : null}
 
-      <form className="pr-card pr-stack" onSubmit={(event) => void submit(event)} noValidate>
-        {/* Payee */}
-        <div className="pr-field">
-          <label className="pr-label" htmlFor="vendor">
-            Who is being paid
-          </label>
+      <form onSubmit={(event) => void submit(event)} noValidate style={{ maxWidth: 560 }}>
+        <div className="erp-field">
+          <label htmlFor="vendor">Who is being paid</label>
           <select
             id="vendor"
-            className="pr-select"
+            className="erp-select"
             value={vendorId}
             aria-invalid={showVendorError ? true : undefined}
             aria-describedby={showVendorError ? 'vendor-error' : undefined}
@@ -268,31 +261,27 @@ export function NewPayment(): ReactNode {
             ))}
           </select>
           {showVendorError ? (
-            <p className="pr-fielderror" id="vendor-error">
+            <div className="erp-err" id="vendor-error">
               {vendorError}
-            </p>
+            </div>
           ) : null}
           {serverFieldErrors['payee_vendor_id'] ? (
-            <p className="pr-fielderror">{serverFieldErrors['payee_vendor_id']}</p>
+            <div className="erp-err">{serverFieldErrors['payee_vendor_id']}</div>
           ) : null}
-
           {selectedVendor ? (
-            <p className="pr-fineprint">
+            <div className="erp-hint">
               Paying {maskAccount(selectedVendor.account_last4)} &middot;{' '}
               {selectedVendor.ifsc}
-              {selectedVendor.is_new_payee ? ' · this payee has no payment history' : ''}
-            </p>
+              {selectedVendor.is_new_payee ? ' · no payment history' : ''}
+            </div>
           ) : null}
         </div>
 
-        {/* Amount */}
-        <div className="pr-field">
-          <label className="pr-label" htmlFor="amount">
-            Amount in rupees
-          </label>
+        <div className="erp-field">
+          <label htmlFor="amount">Amount in rupees</label>
           <input
             id="amount"
-            className="pr-input"
+            className="erp-input"
             inputMode="decimal"
             placeholder="9,80,000"
             value={amount}
@@ -302,90 +291,80 @@ export function NewPayment(): ReactNode {
             onChange={(event) => setAmount(event.target.value)}
           />
           {showAmountError ? (
-            <p className="pr-fielderror" id="amount-error">
+            <div className="erp-err" id="amount-error">
               {amountError}
-            </p>
+            </div>
           ) : amountPreview ? (
-            <p className="pr-fineprint" id="amount-preview">
+            <div className="erp-hint" id="amount-preview">
               {amountPreview}
-            </p>
+            </div>
           ) : null}
           {serverFieldErrors['amount_paise'] ? (
-            <p className="pr-fielderror">{serverFieldErrors['amount_paise']}</p>
+            <div className="erp-err">{serverFieldErrors['amount_paise']}</div>
           ) : null}
         </div>
 
-        {/* Purpose */}
-        <div className="pr-field">
-          <label className="pr-label" htmlFor="purpose">
-            Invoice number or purpose <span className="pr-muted">(optional)</span>
-          </label>
+        <div className="erp-field">
+          <label htmlFor="purpose">Invoice number or purpose (optional)</label>
           <input
             id="purpose"
-            className="pr-input"
+            className="erp-input"
             placeholder="INV-2219"
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
           />
         </div>
 
-        {/* Invoice */}
-        <div className="pr-field">
-          <label className="pr-label" htmlFor="invoice">
-            Invoice <span className="pr-muted">(optional)</span>
-          </label>
+        <div className="erp-field">
+          <label htmlFor="invoice">Invoice (optional)</label>
           <input
             id="invoice"
-            className="pr-input"
+            className="erp-input"
             type="file"
             accept=".pdf,.png,.jpg,.jpeg"
             onChange={(event) => void onFile(event.target.files?.[0] ?? null)}
           />
-          {hashing ? <p className="pr-fineprint">Reading the invoice&hellip;</p> : null}
+          {hashing ? <div className="erp-hint">Reading the invoice&hellip;</div> : null}
           {invoice ? (
-            <p className="pr-fineprint">
+            <div className="erp-hint">
               {invoice.name}
               <br />
-              SHA-256 <code className="pr-mono">{invoice.sha256}</code>
-            </p>
+              SHA-256 {invoice.sha256}
+            </div>
           ) : (
-            <p className="pr-fineprint">
+            <div className="erp-hint">
               Pramaan reads the invoice and checks it against the vendor master. The
               file is fingerprinted here in your browser, so the approver can see it
               is the same document.
-            </p>
+            </div>
           )}
         </div>
 
-        {/* How the instruction arrived. This is the policy engine's best signal. */}
-        <fieldset className="pr-field">
-          <legend className="pr-label">How did this payment come to you?</legend>
+        <fieldset className="erp-fieldset">
+          <legend>How did this payment come to you?</legend>
           {CHANNELS.map((option) => (
-            <label key={option.value} className="pr-radio">
+            <label key={option.value} className="erp-radio">
               <input
                 type="radio"
                 name="channel"
                 value={option.value}
                 checked={channel === option.value}
                 onChange={() => setChannel(option.value)}
-              />
+              />{' '}
               {option.label}
             </label>
           ))}
-          <p className="pr-fineprint">
+          <div className="erp-hint">
             Answer honestly. Pramaan weighs a chat message differently from an
             invoice, and that is the point.
-          </p>
+          </div>
         </fieldset>
 
-        {/* The note */}
-        <div className="pr-field">
-          <label className="pr-label" htmlFor="note">
-            What were you told? <span className="pr-muted">(optional)</span>
-          </label>
+        <div className="erp-field">
+          <label htmlFor="note">What were you told? (optional)</label>
           <textarea
             id="note"
-            className="pr-textarea"
+            className="erp-textarea"
             rows={3}
             placeholder="Paste or summarise the message you were sent."
             value={note}
@@ -393,10 +372,10 @@ export function NewPayment(): ReactNode {
           />
         </div>
 
-        <div className="pr-row">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
           <button
             type="submit"
-            className="pr-button pr-button--primary"
+            className="erp-btn erp-btn--go"
             disabled={!formValid || submitting}
             title={formValid ? undefined : 'Choose a vendor and enter a valid amount first.'}
           >
@@ -405,7 +384,7 @@ export function NewPayment(): ReactNode {
 
           <button
             type="button"
-            className="pr-button"
+            className="erp-btn"
             disabled={!invoice || handingToAgent || submitting}
             onClick={() => void handToAgent()}
             title={
@@ -418,7 +397,7 @@ export function NewPayment(): ReactNode {
           </button>
         </div>
 
-        <p className="pr-fineprint">
+        <p className="erp-hint" style={{ marginTop: 10 }}>
           Pay sends this to Pramaan for a decision. It does not move money, and you
           cannot approve your own payment.
         </p>

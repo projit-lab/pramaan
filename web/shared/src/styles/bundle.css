@@ -1,0 +1,362 @@
+/*
+ * Pramaan components.
+ *
+ * Part D of the brand kit, verbatim, followed by a small set of additions for
+ * screens the kit does not cover (forms, filters, the invoice panel). The
+ * additions use only the tokens and follow the same rules: pill buttons,
+ * tinted rounded cards, Material Symbols icons, no borders on cards.
+ *
+ * Fonts are loaded with <link> tags in each app's index.html rather than the
+ * kit's @import, so they are not render-blocking inside the stylesheet.
+ */
+
+.pm-root, body { font-family: var(--font-sans); color: var(--ink); background: var(--background); font-size: 15px; line-height: 22px; margin: 0; }
+.pm-pad { padding: var(--space-6); }
+.pm-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.pm-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+.pm-center { text-align: center; align-items: center; }
+.pm-mono { font-family: var(--font-mono); font-size: 13px; }
+.pm-muted { color: var(--ink-muted); }
+.pm-label { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .02em; color: var(--ink-muted); }
+.pm-title { font-family: var(--font-display); font-size: 22px; line-height: 28px; font-weight: 500; margin: 0; }
+.pm-heading { font-size: 17px; line-height: 24px; font-weight: 500; margin: 0; }
+
+/* Icons: Material Symbols Rounded, by ligature name */
+.pm-ico { font-family: "Material Symbols Rounded"; font-weight: normal; font-style: normal; font-size: 20px; line-height: 1; display: inline-block; width: 1em; height: 1em; overflow: hidden; white-space: nowrap; direction: ltr; -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; font-variation-settings: "FILL" 0, "wght" 400, "opsz" 20; flex: none; }
+.pm-ico--fill { font-variation-settings: "FILL" 1, "wght" 400, "opsz" 20; }
+.pm-ico--sm { font-size: 18px; }
+.pm-ico--lg { font-size: 24px; }
+
+/* Button: always a pill */
+.pm-btn { font: 500 15px/20px var(--font-sans); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 10px 24px; border-radius: var(--radius-pill); border: 1px solid transparent; cursor: pointer; text-decoration: none; }
+.pm-btn:focus-visible, .pm-focus:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pm-btn--primary { background: var(--primary); color: var(--on-primary); }
+.pm-btn--primary:hover { box-shadow: var(--shadow-card); }
+.pm-btn--tonal { background: var(--primary-container); color: var(--on-primary-container); }
+.pm-btn--outlined { background: transparent; color: var(--primary); border-color: var(--line-strong); }
+.pm-btn--outlined:hover, .pm-btn--text:hover { background: var(--primary-container); }
+.pm-btn--text { background: transparent; color: var(--primary); padding: 10px 12px; }
+.pm-btn--danger { background: var(--blocked); color: var(--on-blocked); }
+.pm-btn--block { width: 100%; min-height: 56px; font-size: 16px; }
+.pm-btn[disabled] { background: var(--surface-container-high); color: var(--ink-muted); border-color: transparent; cursor: not-allowed; box-shadow: none; }
+
+/* StatusChip */
+.pm-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: var(--radius-pill); font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
+.pm-chip .pm-ico { font-size: 16px; }
+.pm-chip--held { background: var(--held-soft); color: var(--held); }
+.pm-chip--approved { background: var(--primary-container); color: var(--on-primary-container); }
+.pm-chip--released { background: var(--released-soft); color: var(--released); }
+.pm-chip--blocked, .pm-chip--declined { background: var(--blocked-soft); color: var(--blocked); }
+.pm-chip--expired { background: var(--neutral-soft); color: var(--ink-muted); }
+
+/* TierBadge */
+.pm-tier { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-sm); font: 500 12px/16px var(--font-sans); background: var(--neutral-soft); color: var(--ink); }
+.pm-tier--2, .pm-tier--3 { background: var(--tier-high-soft); color: var(--tier-high); }
+
+/* ReasonChip */
+.pm-reason { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--neutral-soft); color: var(--ink); font-size: 13px; line-height: 18px; }
+.pm-reason b { font-family: var(--font-mono); font-weight: 400; font-size: 12px; color: var(--ink-muted); }
+
+/* Cards: tinted, no border, big radius */
+.pm-card { background: var(--surface-container); border-radius: var(--radius-lg); padding: var(--space-6); }
+.pm-card--raised { background: var(--surface); box-shadow: var(--shadow-card); }
+.pm-card--tight { padding: var(--space-4); }
+
+/* Avatar: payee initial in a circle */
+.pm-avatar { width: 56px; height: 56px; border-radius: var(--radius-pill); background: var(--primary-container); color: var(--on-primary-container); display: inline-flex; align-items: center; justify-content: center; font: 500 24px/1 var(--font-display); flex: none; }
+.pm-avatar--sm { width: 40px; height: 40px; font-size: 17px; }
+
+/* AmountBlock: centred, payments-app style */
+.pm-amount { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-1); }
+.pm-amount__to { font-size: 15px; color: var(--ink-muted); margin-top: var(--space-2); }
+.pm-amount__payee { font-size: 17px; font-weight: 500; color: var(--ink); }
+.pm-amount__acct { font-family: var(--font-mono); font-size: 13px; color: var(--ink-muted); }
+.pm-amount__fig { font: 500 48px/56px var(--font-display); font-variant-numeric: tabular-nums; margin-top: var(--space-3); }
+.pm-amount__words { font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+.pm-money { font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* ChangedField */
+.pm-changed { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--blocked-soft); }
+.pm-changed > .pm-ico { color: var(--blocked); margin-top: 2px; }
+.pm-changed__body { display: flex; flex-direction: column; gap: 2px; }
+.pm-changed__title { font-weight: 500; font-size: 14px; color: var(--blocked); }
+.pm-changed__vals { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: 13px; }
+.pm-changed__old { color: var(--ink-muted); text-decoration: line-through; }
+.pm-changed__new { color: var(--ink); font-weight: 500; }
+
+/* AiExplanation */
+.pm-ai { background: var(--primary-container); color: var(--on-primary-container); border-radius: var(--radius-md); padding: var(--space-4); }
+.pm-ai__label { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; font-weight: 500; margin-bottom: var(--space-2); }
+.pm-ai__note { font-size: 12px; line-height: 16px; margin-top: var(--space-2); opacity: .85; }
+
+/* Timeline */
+.pm-timeline { list-style: none; margin: 0; padding: 0; }
+.pm-timeline li { position: relative; padding: 0 0 var(--space-4) 36px; }
+.pm-timeline li::before { content: ""; position: absolute; left: 11px; top: 26px; bottom: 2px; width: 2px; border-radius: 2px; background: var(--line); }
+.pm-timeline li:last-child::before { display: none; }
+.pm-timeline__dot { position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: var(--radius-pill); background: var(--primary-container); color: var(--on-primary-container); display: flex; align-items: center; justify-content: center; }
+.pm-timeline__dot .pm-ico { font-size: 16px; }
+.is-held .pm-timeline__dot { background: var(--held-soft); color: var(--held); }
+.is-blocked .pm-timeline__dot { background: var(--blocked-soft); color: var(--blocked); }
+.is-released .pm-timeline__dot { background: var(--released-soft); color: var(--released); }
+.pm-timeline__step { font-weight: 500; }
+.pm-timeline__at { font-size: 13px; color: var(--ink-muted); }
+
+/* AttestationCard */
+.pm-attest { display: grid; grid-template-columns: auto 1fr; gap: var(--space-3) var(--space-4); font-size: 14px; margin: 0; }
+.pm-attest dt { color: var(--ink-muted); }
+.pm-attest dd { margin: 0; font-weight: 500; }
+.pm-pass, .pm-fail, .pm-warn { font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.pm-pass { color: var(--released); }
+.pm-fail { color: var(--blocked); }
+.pm-warn { color: var(--held); }
+
+/* MandateCard */
+.pm-mandate { background: var(--surface-container); border-radius: var(--radius-lg); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); }
+.pm-mandate__head { display: flex; gap: var(--space-4); align-items: center; }
+.pm-hash { font-family: var(--font-mono); font-size: 12px; line-height: 18px; background: var(--surface-container-high); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); word-break: break-all; color: var(--ink); }
+
+/* List (payments-app style rows) */
+.pm-list { background: var(--surface-container); border-radius: var(--radius-lg); padding: var(--space-2) 0; }
+.pm-list__row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); cursor: pointer; }
+.pm-list__row:hover { background: var(--surface-container-high); }
+.pm-list__main { flex: 1; min-width: 0; }
+.pm-list__name { font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.pm-list__sub { font-size: 13px; color: var(--ink-muted); }
+.pm-list__end { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+/* HoldsTable (dense console view) */
+.pm-table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); font-size: 14px; }
+.pm-table th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-muted); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+.pm-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.pm-table tbody tr:hover { background: var(--surface-container); cursor: pointer; }
+.pm-table .num { text-align: right; }
+.pm-cell-payee { display: flex; align-items: center; gap: var(--space-3); }
+
+/* Banner */
+.pm-banner { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); font-size: 14px; color: var(--ink); }
+.pm-banner .pm-ico { margin-top: 1px; }
+.pm-banner--held { background: var(--held-soft); } .pm-banner--held .pm-ico { color: var(--held); }
+.pm-banner--blocked { background: var(--blocked-soft); } .pm-banner--blocked .pm-ico { color: var(--blocked); }
+.pm-banner--released { background: var(--released-soft); } .pm-banner--released .pm-ico { color: var(--released); }
+.pm-banner--info { background: var(--primary-container); color: var(--on-primary-container); }
+
+/* EmptyState */
+.pm-empty { text-align: center; padding: var(--space-8) var(--space-6); color: var(--ink-muted); }
+.pm-empty__art { width: 72px; height: 72px; border-radius: var(--radius-pill); background: var(--primary-container); color: var(--on-primary-container); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--space-3); }
+.pm-empty__art .pm-ico { font-size: 36px; }
+
+/* Success screen */
+.pm-success { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); padding: var(--space-8) var(--space-4); }
+.pm-success__circle { width: 96px; height: 96px; border-radius: var(--radius-pill); background: var(--released-soft); color: var(--released); display: flex; align-items: center; justify-content: center; margin-bottom: var(--space-3); }
+.pm-success__circle .pm-ico { font-size: 56px; }
+
+/* Console shell: nav drawer with active pill */
+.pm-shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100%; background: var(--background); }
+.pm-side { background: var(--surface-container); padding: var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: 2px; }
+.pm-side a { color: var(--ink); text-decoration: none; padding: 10px var(--space-4); border-radius: var(--radius-pill); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: var(--space-3); }
+.pm-side a[aria-current] { background: var(--secondary-container); color: var(--on-secondary-container); }
+
+/* Approver phone */
+.pm-phone { width: 360px; max-width: 100%; border-radius: 32px; overflow: hidden; border: 1px solid var(--line); background: var(--background); box-shadow: var(--shadow-pop); }
+.pm-appbar { background: var(--background); color: var(--ink); padding: var(--space-3) var(--space-4); display: flex; align-items: center; gap: var(--space-3); font-size: 17px; font-weight: 500; }
+.pm-sheet { padding: var(--space-2) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* Acme ERP: the customer's system, deliberately not Pramaan */
+.erp-shell { display: grid; grid-template-columns: 180px 1fr; font-family: Tahoma, Verdana, "Segoe UI", sans-serif; background: #F7F8FA; color: #1F2328; }
+.erp-side { background: var(--erp-chrome); color: var(--on-erp-chrome); padding: var(--space-4) var(--space-3); font-size: 13px; display: flex; flex-direction: column; gap: var(--space-2); }
+.erp-side strong { font-size: 14px; letter-spacing: .02em; margin-bottom: var(--space-2); }
+.erp-main { padding: var(--space-4); }
+.erp-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #FFFFFF; border: 1px solid #C9CED6; }
+.erp-table th, .erp-table td { border: 1px solid #C9CED6; padding: 6px 8px; text-align: left; }
+.erp-table th { background: #E9ECF0; font-weight: 600; }
+.pm-protected { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: #D3E3FD; color: #041E49; font: 500 12px/18px var(--font-sans); }
+.pm-protected img { width: 18px; height: 18px; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- Signature pieces: what makes Pramaan look like Pramaan ---------- */
+
+/* Section title: big and light, like a payments app */
+.pm-section { font: 400 28px/34px var(--font-display); margin: 0; color: var(--ink); }
+
+/* Band: the coloured header with seal lines. Its colour is the payment's state. */
+.pm-band { position: relative; overflow: hidden; background: var(--band); color: var(--ink); }
+.pm-band--held { background: var(--band-held); }
+.pm-band--released { background: var(--band-released); }
+.pm-band--blocked { background: var(--band-blocked); }
+.pm-band::before { content: ""; position: absolute; width: 520px; height: 520px; right: -260px; top: -260px; border-radius: 50%; pointer-events: none; opacity: .45;
+  background: repeating-radial-gradient(circle, transparent 0 15px, var(--seal-line) 15px 16.5px);
+  -webkit-mask-image: radial-gradient(circle, #000 0 45%, transparent 70%); mask-image: radial-gradient(circle, #000 0 45%, transparent 70%); }
+.pm-band::after { content: ""; position: absolute; width: 150px; height: 150px; right: -40px; top: -40px; border-radius: 50%; border: 2px dashed var(--seal-line); opacity: .8; pointer-events: none; }
+.pm-band > * { position: relative; z-index: 1; }
+.pm-band__inner { padding: var(--space-4) var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); }
+.pm-display { font: 500 40px/46px var(--font-display); letter-spacing: -0.01em; margin: 0; }
+.pm-band .pm-amount__fig { font-size: 56px; line-height: 60px; letter-spacing: -0.02em; margin-top: var(--space-2); }
+
+/* Search pill, sitting on the band */
+.pm-search { display: flex; align-items: center; gap: var(--space-3); background: var(--surface); border-radius: var(--radius-pill); padding: 12px 20px; color: var(--ink-muted); box-shadow: var(--shadow-card); font-size: 16px; }
+
+/* Action tiles: rounded squares with the label under them */
+.pm-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); }
+.pm-tile { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); text-align: center; font-size: 14px; line-height: 18px; color: var(--ink); text-decoration: none; }
+.pm-tile__sq { width: 64px; height: 64px; border-radius: var(--radius-lg); background: var(--primary-container); color: var(--primary); display: flex; align-items: center; justify-content: center; position: relative; }
+.pm-tile__sq .pm-ico { font-size: 28px; }
+.pm-tile__count { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--held); color: var(--on-primary); font: 500 12px/22px var(--font-sans); border: 2px solid var(--background); }
+
+/* Hold to approve: press and hold, a deeper blue fills the pill, then the phone signs */
+.pm-hold { position: relative; overflow: hidden; width: 100%; min-height: 60px; border: 0; border-radius: var(--radius-pill); background: var(--primary); color: var(--on-primary); font: 500 16px/20px var(--font-sans); display: flex; align-items: center; justify-content: center; gap: var(--space-2); cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+.pm-hold::before { content: ""; position: absolute; inset: 0; width: var(--p, 0%); background: var(--primary-deep); transition: width .12s linear; }
+.pm-hold > * { position: relative; }
+.pm-hold:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pm-hold.is-done { background: var(--released); }
+.pm-hold.is-done::before { display: none; }
+.pm-hold__hint { font-size: 12px; color: var(--ink-muted); text-align: center; margin-top: calc(var(--space-2) * -1); }
+
+/* Extended floating action button */
+.pm-fab { display: inline-flex; align-items: center; gap: var(--space-3); padding: 16px 24px; border-radius: var(--radius-lg); background: var(--primary-container); color: var(--on-primary-container); font: 500 16px/20px var(--font-sans); border: 0; box-shadow: var(--shadow-pop); cursor: pointer; }
+
+/* Bottom navigation with the active pill */
+.pm-bottomnav { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface-container); padding: var(--space-3) var(--space-2) var(--space-4); }
+.pm-bottomnav a { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: 13px; font-weight: 500; color: var(--ink-muted); text-decoration: none; }
+.pm-bottomnav .pm-ico { width: 64px; height: 32px; border-radius: var(--radius-pill); display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.pm-bottomnav a[aria-current] { color: var(--ink); }
+.pm-bottomnav a[aria-current] .pm-ico { background: var(--secondary-container); color: var(--on-secondary-container); font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+
+/* Outlined info pill (like a payments app's shortcut pills) */
+.pm-pill { display: inline-flex; align-items: center; gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 8px 20px 8px 8px; background: var(--background); }
+.pm-pill__ic { width: 40px; height: 40px; border-radius: 50%; background: var(--primary-container); color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.pm-pill__k { font-size: 13px; color: var(--ink-muted); line-height: 16px; }
+.pm-pill__v { font-size: 15px; font-weight: 500; line-height: 20px; }
+
+/* ====================================================================== */
+/* Project additions. Screens the kit does not cover, built from the same  */
+/* tokens and the same rules.                                             */
+/* ====================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+/* Page scaffolding for the console and the public pages */
+.pm-page { max-width: 1200px; margin: 0 auto; padding: var(--space-6); width: 100%; }
+.pm-page--narrow { max-width: 760px; }
+.pm-spread { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.pm-stack--lg { gap: var(--space-6); }
+.pm-grow { flex: 1; min-width: 0; }
+.pm-centred { min-height: 100vh; display: grid; place-items: center; padding: var(--space-4); }
+.pm-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+a { color: var(--primary); }
+
+/* The console's state band spans the content width and carries the page title */
+.pm-band--page { border-radius: var(--radius-lg); margin-bottom: var(--space-6); }
+
+/* Filters: pills, same family as chips */
+.pm-filters { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.pm-filter { font: 500 13px/18px var(--font-sans); padding: 8px 16px; border-radius: var(--radius-pill); border: 1px solid var(--line); background: var(--background); color: var(--ink-muted); cursor: pointer; min-height: 36px; }
+.pm-filter:hover { background: var(--surface-container); }
+.pm-filter[aria-pressed='true'] { background: var(--secondary-container); color: var(--on-secondary-container); border-color: transparent; }
+.pm-filter:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Forms */
+.pm-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.pm-field__label { font-size: 14px; font-weight: 500; color: var(--ink); }
+.pm-input, .pm-select, .pm-textarea { font: 400 15px/22px var(--font-sans); padding: 12px var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); width: 100%; min-height: 48px; }
+.pm-input:focus-visible, .pm-select:focus-visible, .pm-textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.pm-textarea { min-height: 88px; resize: vertical; }
+.pm-input[aria-invalid='true'], .pm-select[aria-invalid='true'], .pm-textarea[aria-invalid='true'] { border-color: var(--blocked); background: var(--blocked-soft); }
+.pm-fielderror { font-size: 13px; line-height: 18px; color: var(--blocked); display: flex; align-items: center; gap: 6px; }
+.pm-hint { font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+fieldset.pm-field { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-4); margin: 0; }
+fieldset.pm-field legend { padding: 0 var(--space-2); font-size: 14px; font-weight: 500; }
+.pm-radio { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; font-size: 15px; cursor: pointer; min-height: 44px; }
+.pm-radio input { width: 20px; height: 20px; accent-color: var(--primary); flex: none; }
+
+/* Invoice panel: the document beside what Gemini read from it */
+.pm-invoice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--space-4); align-items: start; }
+.pm-invoice__preview { border-radius: var(--radius-md); background: var(--surface-container-high); min-height: 320px; overflow: hidden; display: grid; place-items: center; }
+.pm-invoice__preview object { width: 100%; height: 100%; min-height: 320px; display: block; border: 0; }
+.pm-invoice__missing { padding: var(--space-6); text-align: center; color: var(--ink-muted); }
+.pm-mismatch { color: var(--blocked); font-weight: 500; }
+.pm-table tr[data-mismatch='true'] { background: var(--blocked-soft); }
+.pm-table tr[data-mismatch='true']:hover { background: var(--blocked-soft); }
+
+/* A check Pramaan has no result for. Never styled as a pass or a failure. */
+.pm-unverified { color: var(--ink-muted); font-style: italic; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Quoted instruction text, and a Model Armor excerpt */
+.pm-quote { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--held-soft); color: var(--held); font-style: italic; }
+.pm-excerpt { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--blocked-soft); color: var(--blocked); font-family: var(--font-mono); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-x: auto; }
+.pm-json { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--surface-container-high); font-family: var(--font-mono); font-size: 12px; line-height: 18px; max-height: 384px; overflow: auto; white-space: pre; }
+
+/* Spinner, for the brief moment before a live listener answers */
+.pm-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--primary); animation: pm-spin .8s linear infinite; }
+@keyframes pm-spin { to { transform: rotate(360deg); } }
+
+/* Toast, for a hold arriving while the board is open */
+.pm-toasts { position: fixed; right: var(--space-4); bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); z-index: 50; max-width: 24rem; }
+.pm-toast { background: var(--ink); color: var(--background); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); box-shadow: var(--shadow-pop); font-size: 14px; }
+
+/* Definition grid, for evidence blocks */
+.pm-defs { display: grid; grid-template-columns: 180px 1fr; gap: var(--space-3) var(--space-4); margin: 0; font-size: 14px; }
+.pm-defs dt { color: var(--ink-muted); }
+.pm-defs dd { margin: 0; display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; }
+
+/* ------------------------------- responsive ------------------------------ */
+
+@media (max-width: 900px) {
+  .pm-shell { grid-template-columns: 1fr; }
+  .pm-side { flex-direction: row; overflow-x: auto; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+  .pm-side a { white-space: nowrap; }
+  .pm-side__brand { display: none; }
+  .pm-invoice { grid-template-columns: 1fr; }
+  .pm-defs { grid-template-columns: 1fr; gap: var(--space-1); }
+  .pm-defs dd { margin-bottom: var(--space-3); }
+}
+
+@media (max-width: 560px) {
+  .pm-page { padding: var(--space-4); }
+  .pm-display { font-size: 30px; line-height: 36px; }
+  .pm-section { font-size: 22px; line-height: 28px; }
+  .pm-amount__fig { font-size: 36px; line-height: 44px; }
+  .pm-band .pm-amount__fig { font-size: 40px; line-height: 46px; }
+  .pm-tiles { grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
+  .pm-card { padding: var(--space-4); }
+  .pm-table-wrap { overflow-x: auto; }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Acme ERP extras. The customer's own older software: square, dense, grey, */
+/* no pills and no Google Sans. The contrast is what makes the Pramaan      */
+/* pieces stand out when they appear inside it.                            */
+/* ---------------------------------------------------------------------- */
+
+.erp-shell { min-height: 100vh; }
+.erp-side a { color: var(--on-erp-chrome); text-decoration: none; padding: 4px 6px; display: block; }
+.erp-side a:hover { background: rgba(255, 255, 255, 0.08); }
+.erp-side a[aria-current] { background: rgba(255, 255, 255, 0.16); font-weight: 600; }
+.erp-main h1 { font-size: 18px; margin: 0 0 4px; font-weight: 700; }
+.erp-main h2 { font-size: 14px; margin: 0 0 4px; font-weight: 700; }
+.erp-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.erp-btn { font: 400 13px/1.2 Tahoma, Verdana, sans-serif; padding: 5px 12px; border: 1px solid #8A9099; border-radius: 2px; background: linear-gradient(#FDFDFD, #E8EBEF); color: #1F2328; cursor: pointer; min-height: 28px; }
+.erp-btn:hover:not(:disabled) { background: linear-gradient(#FFFFFF, #DDE2E8); }
+.erp-btn:disabled { color: #8A9099; cursor: not-allowed; background: #F0F1F3; }
+.erp-btn--go { font-weight: 700; }
+.erp-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.erp-field { display: block; margin-bottom: 10px; font-size: 13px; }
+.erp-field > label { display: block; font-weight: 700; margin-bottom: 3px; }
+.erp-input, .erp-select, .erp-textarea { font: 400 13px Tahoma, Verdana, sans-serif; padding: 5px 6px; border: 1px solid #8A9099; border-radius: 2px; background: #FFFFFF; color: #1F2328; width: 100%; max-width: 420px; }
+.erp-textarea { min-height: 64px; resize: vertical; }
+.erp-input[aria-invalid='true'], .erp-select[aria-invalid='true'] { border-color: #B3261E; background: #FFF6F5; }
+.erp-err { color: #B3261E; font-size: 12px; margin-top: 3px; }
+.erp-hint { color: #5A6169; font-size: 12px; margin-top: 3px; }
+.erp-note { border: 1px solid #C9CED6; background: #FFFDF0; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
+.erp-fieldset { border: 1px solid #C9CED6; padding: 8px 10px; margin: 0 0 10px; }
+.erp-fieldset legend { font-weight: 700; font-size: 13px; padding: 0 4px; }
+.erp-radio { display: block; padding: 3px 0; font-size: 13px; cursor: pointer; }
+.erp-empty { border: 1px dashed #C9CED6; background: #FFFFFF; padding: 24px; text-align: center; color: #5A6169; font-size: 13px; }
+
+@media (max-width: 760px) {
+  .erp-shell { grid-template-columns: 1fr; }
+  .erp-side { flex-direction: row; flex-wrap: wrap; }
+  .erp-table-wrap { overflow-x: auto; }
+}

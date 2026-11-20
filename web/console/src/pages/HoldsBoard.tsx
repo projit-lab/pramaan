@@ -1,34 +1,33 @@
 /**
- * Holds board v1.
+ * The finance console's board: one row per scored payment, live from Firestore.
  *
- * A live list from Firestore with status filters, plus the loading, empty and
- * error states. Riskiest first: tier descending, then newest.
- *
- * There is no Approve button here, at any role. An approval is a hardware
- * signature made on a phone, and no amount of being signed in to a web console
- * can produce one. That absence is the product.
+ * Held first, then riskiest. A row opens the payment detail page. There is no
+ * Approve button, by design.
  */
 
 import {
+  Avatar,
   COLLECTIONS,
   EmptyState,
   ErrorState,
   type Hold,
   HOLD_STATUSES,
   type HoldStatus,
+  Icon,
   LoadingState,
   Money,
+  StateBand,
   StatusBadge,
   TierBadge,
   type WithId,
   comparePaise,
   formatIstWithRelative,
   maskAccount,
+  relativeTime,
   useLiveCollection,
 } from '@pramaan/shared';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ReasonChips } from '../components/ReasonChips';
+import { Link, useNavigate } from 'react-router-dom';
 
 type Filter = HoldStatus | 'all';
 
@@ -41,27 +40,35 @@ const FILTERS: Array<{ value: Filter; label: string }> = [
   { value: 'all', label: 'All' },
 ];
 
-/** Riskiest first: higher tier, then larger amount, then newest. */
-function byRisk(a: WithId<Hold>, b: WithId<Hold>): number {
+/** Held first, then higher tier, then larger amount, then newest. */
+function byUrgency(a: WithId<Hold>, b: WithId<Hold>): number {
+  const held = (hold: WithId<Hold>) => (hold.status === 'held' ? 0 : 1);
+  if (held(a) !== held(b)) return held(a) - held(b);
   if (a.tier !== b.tier) return b.tier - a.tier;
   const byAmount = comparePaise(b.amountPaise ?? '0', a.amountPaise ?? '0');
   if (byAmount !== 0) return byAmount;
-  const aTime = a.createdAt?.toMillis?.() ?? 0;
-  const bTime = b.createdAt?.toMillis?.() ?? 0;
-  return bTime - aTime;
+  return (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
+}
+
+/** The one-line "why" in the board's last-but-one column. */
+function whyLine(hold: WithId<Hold>): string {
+  const reasons = hold.reasons ?? [];
+  if (reasons.length === 0) return 'No rules matched';
+  return reasons
+    .slice(0, 2)
+    .map((reason) => reason.text.replace(/\.$/, ''))
+    .join(', ');
 }
 
 export function HoldsBoard(): ReactNode {
   const [filter, setFilter] = useState<Filter>('held');
+  const navigate = useNavigate();
 
-  // The whole collection is read live and filtered in the browser. For the
-  // buildathon's data volume this is one listener instead of six, and switching
-  // a filter costs nothing. A real tenant would push the filter into the query.
   const { data, status, error } = useLiveCollection<Hold>(COLLECTIONS.holds);
 
   const visible = useMemo(() => {
     const rows = filter === 'all' ? data : data.filter((hold) => hold.status === filter);
-    return [...rows].sort(byRisk);
+    return [...rows].sort(byUrgency);
   }, [data, filter]);
 
   const counts = useMemo(() => {
@@ -72,16 +79,15 @@ export function HoldsBoard(): ReactNode {
     return result;
   }, [data]);
 
+  const waiting = counts['held'] ?? 0;
   const newHold = useNewHoldToast(data, status);
 
-  if (status === 'loading') {
-    return <LoadingState label="Loading held payments" />;
-  }
+  if (status === 'loading') return <LoadingState label="Loading held payments" />;
 
   if (status === 'error') {
     return (
       <ErrorState
-        title="Could not load the holds board"
+        title="We could not load the board"
         error={error}
         onRetry={() => window.location.reload()}
       />
@@ -89,118 +95,140 @@ export function HoldsBoard(): ReactNode {
   }
 
   return (
-    <div className="pr-stack">
-      <div className="pr-spread">
-        <div>
-          <h1 className="pr-h1">Held payments</h1>
-          <p className="pr-muted">
-            Every payment Pramaan is holding until the real approver signs it on their
-            phone. Approving happens on the phone, never here.
-          </p>
+    <>
+      <StateBand
+        status={waiting > 0 ? 'held' : null}
+        eyebrow={
+          waiting > 0 ? (
+            <StatusBadge status="held" onBand />
+          ) : (
+            <span className="pm-label">Nothing waiting</span>
+          )
+        }
+      >
+        <h1 className="pm-display">
+          {waiting === 0
+            ? 'All caught up'
+            : waiting === 1
+              ? '1 payment needs an approver'
+              : `${waiting} payments need an approver`}
+        </h1>
+        <div className="pm-muted">
+          Approving happens on the approver&rsquo;s phone, never here.
         </div>
-      </div>
+      </StateBand>
 
-      <div className="pr-filters" role="group" aria-label="Filter by status">
-        {FILTERS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className="pr-filter"
-            aria-pressed={filter === option.value}
-            onClick={() => setFilter(option.value)}
-          >
-            {option.label}
-            {counts[option.value] !== undefined ? ` (${counts[option.value]})` : ''}
-          </button>
-        ))}
-      </div>
+      <div className="pm-stack pm-stack--lg">
+        <div className="pm-filters" role="group" aria-label="Filter by status">
+          {FILTERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="pm-filter"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+            >
+              {option.label}
+              {counts[option.value] !== undefined ? ` ${counts[option.value]}` : ''}
+            </button>
+          ))}
+        </div>
 
-      {data.length === 0 ? (
-        <EmptyState
-          title="No payments held yet"
-          detail="A payment appears here the moment a rule holds it. Create one in Acme ERP to see it arrive."
-        />
-      ) : visible.length === 0 ? (
-        <EmptyState
-          title={`No ${filter} payments`}
-          detail="Try another filter, or All."
-        />
-      ) : (
-        <HoldsTable rows={visible} />
-      )}
+        {data.length === 0 ? (
+          <EmptyState
+            title="Nothing is waiting"
+            detail="Payments that need an approver will show up here. Create one in Acme ERP to see it arrive."
+          />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            title={`No ${filter} payments`}
+            detail="Try another filter, or All."
+            icon="filter_alt"
+          />
+        ) : (
+          <div className="pm-table-wrap">
+            <table className="pm-table">
+              <caption className="pm-visually-hidden">
+                Payments Pramaan has scored, held first
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Payee</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="num">
+                    Amount
+                  </th>
+                  <th scope="col">Tier</th>
+                  <th scope="col">Why</th>
+                  <th scope="col">Age</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((hold) => {
+                  const raised = formatIstWithRelative(hold.createdAt);
+                  return (
+                    <tr
+                      key={hold.id}
+                      onClick={() => navigate(`/payments/${hold.id}`)}
+                      title={raised ? raised.absolute : undefined}
+                    >
+                      <td>
+                        <div className="pm-cell-payee">
+                          <Avatar name={hold.payeeName} size="sm" />
+                          <div>
+                            <Link
+                              to={`/payments/${hold.id}`}
+                              style={{ fontWeight: 500, textDecoration: 'none', color: 'var(--ink)' }}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {hold.payeeName}
+                              {hold.initiator?.type === 'agent' ? (
+                                <Icon name="smart_toy" size="sm" />
+                              ) : null}
+                            </Link>
+                            <div className="pm-mono pm-muted">
+                              {maskAccount(hold.payeeAccountLast4)}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <StatusBadge status={hold.status} />
+                      </td>
+                      <td className="num">
+                        <Money paise={hold.amountPaise} />
+                      </td>
+                      <td>
+                        <TierBadge tier={hold.tier} />
+                      </td>
+                      <td>{whyLine(hold)}</td>
+                      <td className="pm-muted">
+                        {relativeTime(hold.createdAt)?.replace(' ago', '') ?? '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {newHold ? (
-        <div className="pr-toasts">
-          <div className="pr-toast pr-toast--held" role="status">
-            New hold: {newHold.payeeNameAtBank}
+        <div className="pm-toasts">
+          <div className="pm-toast" role="status">
+            New hold: {newHold.payeeName}
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function HoldsTable({ rows }: { rows: Array<WithId<Hold>> }): ReactNode {
-  return (
-    <table className="pr-table">
-      <caption className="pr-visually-hidden">
-        Held payments, riskiest first
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Payee</th>
-          <th scope="col">Amount</th>
-          <th scope="col">Tier</th>
-          <th scope="col">Status</th>
-          <th scope="col">Why it was held</th>
-          <th scope="col">Raised</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((hold) => {
-          const raised = formatIstWithRelative(hold.createdAt);
-          return (
-            <tr key={hold.id}>
-              <td>
-                <Link to={`/payments/${hold.id}`}>{hold.payeeNameAtBank}</Link>
-                <div className="pr-fineprint">
-                  {maskAccount(hold.payeeAccountLast4)} &middot; {hold.payeeIfsc}
-                </div>
-              </td>
-              <td>
-                <Money paise={hold.amountPaise} />
-              </td>
-              <td>
-                <TierBadge tier={hold.tier} />
-              </td>
-              <td>
-                <StatusBadge status={hold.status} />
-              </td>
-              <td>
-                <ReasonChips reasons={hold.reasons ?? []} />
-              </td>
-              <td>
-                {raised ? (
-                  <>
-                    <div>{raised.relative}</div>
-                    <div className="pr-fineprint">{raised.absolute}</div>
-                  </>
-                ) : (
-                  <span className="pr-unverified">No time recorded</span>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    </>
   );
 }
 
 /**
  * Shows a toast when a hold arrives that was not in the previous snapshot.
  *
- * Deliberately ignores the first snapshot: on opening the board, every hold is
+ * Deliberately ignores the first snapshot: on opening the board every hold is
  * "new", and six toasts at once is noise rather than news.
  */
 function useNewHoldToast(

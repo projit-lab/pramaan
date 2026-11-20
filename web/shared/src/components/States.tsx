@@ -1,38 +1,50 @@
 /**
- * Loading, empty and error states.
+ * Loading, empty and error states, plus the one that matters most:
+ * "couldn't verify".
  *
- * Every screen in Pramaan has all three designed before it is coded, so they live
- * here once instead of being improvised per screen.
- *
- * The error state never says "fraud" and never claims a check failed. An error is
- * an error: something could not be loaded.
+ * The brand kit's voice rules apply here more than anywhere: say what we
+ * checked and what did not match, never "fraud", never "Error!", never
+ * "Success!". An empty board is not a failure, so it does not look like one.
  */
 
 import type { ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export function LoadingState({ label = 'Loading' }: { label?: string }): ReactNode {
   return (
-    <div className="pr-state" role="status" aria-live="polite">
-      <span className="pr-spinner" aria-hidden="true" />
-      <p className="pr-muted">{label}&hellip;</p>
+    <div className="pm-empty" role="status" aria-live="polite">
+      <span className="pm-spinner" aria-hidden="true" style={{ margin: '0 auto 12px' }} />
+      <div className="pm-muted">{label}&hellip;</div>
     </div>
   );
 }
 
 export interface EmptyStateProps {
-  /** The headline, written for the person reading it: "No payments held yet". */
+  /** Written for the person reading it: "Nothing is waiting". */
   title: string;
   /** One line about what would make something appear here. */
   detail?: string;
+  /** A Material Symbols ligature. Defaults to an inbox. */
+  icon?: string;
   children?: ReactNode;
 }
 
-export function EmptyState({ title, detail, children }: EmptyStateProps): ReactNode {
+export function EmptyState({
+  title,
+  detail,
+  icon = 'inbox',
+  children,
+}: EmptyStateProps): ReactNode {
   return (
-    <div className="pr-state">
-      <p className="pr-state__title">{title}</p>
-      {detail ? <p className="pr-muted">{detail}</p> : null}
-      {children}
+    <div className="pm-card pm-empty">
+      <span className="pm-empty__art">
+        <Icon name={icon} />
+      </span>
+      <div className="pm-heading" style={{ color: 'var(--ink)' }}>
+        {title}
+      </div>
+      {detail ? <div>{detail}</div> : null}
+      {children ? <div style={{ marginTop: 'var(--space-4)' }}>{children}</div> : null}
     </div>
   );
 }
@@ -40,38 +52,80 @@ export function EmptyState({ title, detail, children }: EmptyStateProps): ReactN
 export interface ErrorStateProps {
   title?: string;
   error?: Error | null;
-  /** Shown when the person can do something about it. */
   onRetry?: () => void;
 }
 
+/**
+ * Something could not be loaded. That is all this says: it is never evidence
+ * about a payment, and it never uses the word fraud.
+ */
 export function ErrorState({
-  title = 'Could not load this',
+  title = 'We could not load this',
   error,
   onRetry,
 }: ErrorStateProps): ReactNode {
   return (
-    <div className="pr-state pr-state--error" role="alert">
-      <p className="pr-state__title">{title}</p>
-      {error ? <p className="pr-muted pr-mono">{error.message}</p> : null}
+    <div className="pm-stack" role="alert">
+      <div className="pm-banner pm-banner--blocked">
+        <Icon name="error" />
+        <div>
+          <strong style={{ fontWeight: 500 }}>{title}.</strong>{' '}
+          {error ? error.message : 'Please try again.'}
+        </div>
+      </div>
       {onRetry ? (
-        <button type="button" className="pr-button" onClick={onRetry}>
-          Try again
-        </button>
+        <div>
+          <button type="button" className="pm-btn pm-btn--tonal" onClick={onRetry}>
+            <Icon name="refresh" />
+            Try again
+          </button>
+        </div>
       ) : null}
     </div>
   );
 }
 
 /**
- * What a screen shows where a security check did not run.
+ * A check Pramaan has no result for.
  *
  * Never "passed", never "failed", never "fraud". A check that did not run is a
- * check we cannot speak for, and the UI says exactly that.
+ * check we cannot speak for, and the screen says exactly that.
  */
 export function CouldNotVerify({ what }: { what?: string }): ReactNode {
   return (
-    <span className="pr-unverified" title="Pramaan has no result for this check.">
+    <span className="pm-unverified" title="Pramaan has no result for this check.">
+      <Icon name="help" size="sm" />
       Couldn&rsquo;t verify{what ? ` ${what}` : ''}
     </span>
+  );
+}
+
+export type BannerTone = 'held' | 'blocked' | 'released' | 'info';
+
+/**
+ * A one-line message at the top of a page or card.
+ *
+ * Lead with the fact, then one detail, and always say whether money moved.
+ */
+export function Banner({
+  tone,
+  icon,
+  children,
+}: {
+  tone: BannerTone;
+  icon?: string;
+  children: ReactNode;
+}): ReactNode {
+  const defaults: Record<BannerTone, string> = {
+    held: 'schedule',
+    blocked: 'block',
+    released: 'check_circle',
+    info: 'info',
+  };
+  return (
+    <div className={`pm-banner pm-banner--${tone}`}>
+      <Icon name={icon ?? defaults[tone]} />
+      <div>{children}</div>
+    </div>
   );
 }

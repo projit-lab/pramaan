@@ -1,66 +1,111 @@
 /**
- * Status, tier and reason badges.
+ * Status chips, tier badges, reason chips and the AI label.
  *
- * Colour carries meaning only, and never alone: amber held, red blocked or
- * declined, green released, each always with its own text. The same mapping is
- * used in the console, the mock ERP and the sandbox bank, so a judge watching two
- * screens side by side sees one language.
+ * Two rules from the brand kit are enforced here rather than left to each
+ * screen:
+ *
+ *   - **Colour never carries meaning alone.** Every chip has an icon and a
+ *     word. Nothing is distinguished by colour only.
+ *   - **Approved is blue, not green.** Green is kept for money that actually
+ *     moved. A signed approval is not a released payment, and showing both in
+ *     green would blur the one distinction the product exists to make.
  */
 
 import type { ReactNode } from 'react';
 import type { HoldStatus, ModelArmorCategory, ReasonSource } from '../types/firestore';
+import { Icon } from './Icon';
 
-const STATUS_LABELS: Record<HoldStatus, string> = {
-  held: 'Held',
-  approved: 'Approved',
-  declined: 'Declined',
-  released: 'Released',
-  blocked: 'Blocked',
-  expired: 'Expired',
+interface ChipLook {
+  className: string;
+  icon: string;
+  label: string;
+}
+
+const STATUS_LOOK: Record<HoldStatus, ChipLook> = {
+  held: { className: 'pm-chip--held', icon: 'schedule', label: 'Held' },
+  approved: { className: 'pm-chip--approved', icon: 'draw', label: 'Approved' },
+  released: { className: 'pm-chip--released', icon: 'check_circle', label: 'Released' },
+  declined: { className: 'pm-chip--declined', icon: 'block', label: 'Declined' },
+  blocked: { className: 'pm-chip--blocked', icon: 'gpp_bad', label: 'Blocked' },
+  expired: { className: 'pm-chip--expired', icon: 'timer_off', label: 'Expired' },
 };
 
-/** amber held, green released, red blocked and declined, grey the rest. */
-const STATUS_TONES: Record<HoldStatus, string> = {
-  held: 'amber',
-  approved: 'blue',
-  declined: 'red',
-  released: 'green',
-  blocked: 'red',
-  expired: 'grey',
-};
-
-export function StatusBadge({ status }: { status: HoldStatus }): ReactNode {
-  const tone = STATUS_TONES[status] ?? 'grey';
-  const label = STATUS_LABELS[status] ?? status;
+export function StatusBadge({
+  status,
+  onBand = false,
+}: {
+  status: HoldStatus;
+  /** On a coloured band the chip sits on white, so it stays readable. */
+  onBand?: boolean;
+}): ReactNode {
+  const look = STATUS_LOOK[status];
+  if (!look) {
+    return <span className="pm-chip pm-chip--expired">{status}</span>;
+  }
   return (
-    <span className={`pr-badge pr-badge--${tone}`} data-status={status}>
-      {label}
+    <span
+      className={`pm-chip ${look.className}`}
+      style={onBand ? { background: 'var(--background)' } : undefined}
+      data-status={status}
+    >
+      <Icon name={look.icon} />
+      {look.label}
     </span>
   );
 }
 
-const TIER_NAMES: Record<number, string> = {
-  0: 'Pass',
-  1: 'Signed approval',
-  2: 'Spoken confirmation',
-  3: 'Two people and a call-back',
-};
+/** Which band colour a status gets. Blue at rest, amber held, green released, red stopped. */
+export function bandModifier(status: HoldStatus | null | undefined): string {
+  if (status === 'held') return 'pm-band--held';
+  if (status === 'released') return 'pm-band--released';
+  if (status === 'blocked' || status === 'declined') return 'pm-band--blocked';
+  return '';
+}
 
+/**
+ * The risk tier the rules gave a payment. A small radius, not a pill, so it
+ * never reads as a status. Always beside the status chip, never instead of it.
+ */
 export function TierBadge({ tier }: { tier: number }): ReactNode {
-  const name = TIER_NAMES[tier];
+  const names: Record<number, string> = {
+    0: 'Pass',
+    1: 'Signed approval',
+    2: 'Spoken confirmation',
+    3: 'Two people and a call-back',
+  };
   return (
-    <span className={`pr-badge pr-badge--tier${tier}`} title={name ?? undefined}>
+    <span className={`pm-tier pm-tier--${tier}`} title={names[tier]}>
       Tier {tier}
-      {name ? <span className="pr-badge__sub">{name}</span> : null}
     </span>
   );
+}
+
+/** Icons for the rule codes we know. Anything else gets a neutral marker. */
+const REASON_ICONS: Record<string, string> = {
+  new_payee: 'person_add',
+  bank_details_changed: 'account_balance',
+  lookalike_vendor: 'content_copy',
+  amount_above_5_lakh: 'trending_up',
+  amount_above_25_lakh: 'trending_up',
+  unusual_amount: 'trending_up',
+  outside_working_hours: 'bedtime',
+  raised_by_agent: 'smart_toy',
+  instruction_by_chat: 'chat',
+  instruction_by_email: 'mail',
+  pressure_language: 'priority_high',
+  invoice_account_mismatch: 'rule',
+  model_armor_finding: 'gpp_bad',
+};
+
+export function reasonIcon(code: string): string {
+  return REASON_ICONS[code] ?? 'label';
 }
 
 /**
  * The label that must sit on anything Gemini wrote.
  *
- * The build plan's wording, kept word for word so it reads the same on every
- * screen: "Explanation written by Gemini; rules made the decision".
+ * The kit's wording, kept exactly: "AI summary · Gemini", with the note that
+ * rules made the decision.
  */
 export function AiLabel({
   variant = 'explanation',
@@ -68,28 +113,24 @@ export function AiLabel({
   variant?: 'explanation' | 'extraction' | 'answer';
 }): ReactNode {
   const text =
-    variant === 'explanation'
-      ? 'Explanation written by Gemini; rules made the decision'
-      : variant === 'extraction'
-        ? 'Fields read by Gemini; compared against the vendor master by rules'
-        : 'Answer written by Gemini from the ledger';
+    variant === 'extraction'
+      ? 'AI extraction · Gemini'
+      : variant === 'answer'
+        ? 'AI answer · Gemini'
+        : 'AI summary · Gemini';
   return (
-    <span className="pr-ailabel">
-      <span className="pr-ailabel__dot" aria-hidden="true" />
+    <div className="pm-ai__label">
+      <Icon name="auto_awesome" fill size="sm" />
       {text}
-    </span>
+    </div>
   );
 }
 
-/** A small marker beside a single reason, saying where that reason came from. */
+/** A small marker beside one reason, saying where that reason came from. */
 export function ReasonSourceTag({ source }: { source: ReasonSource }): ReactNode {
-  if (source === 'rule') {
-    return <span className="pr-tag pr-tag--rule">Rule</span>;
-  }
-  if (source === 'gemini') {
-    return <span className="pr-tag pr-tag--ai">AI-written</span>;
-  }
-  return <span className="pr-tag pr-tag--armor">Model Armor</span>;
+  if (source === 'rule') return <b>rule</b>;
+  if (source === 'gemini') return <b>AI-written</b>;
+  return <b>Model Armor</b>;
 }
 
 const ARMOR_LABELS: Record<ModelArmorCategory, string> = {
@@ -101,25 +142,27 @@ const ARMOR_LABELS: Record<ModelArmorCategory, string> = {
 
 export function ModelArmorBadge({ category }: { category: ModelArmorCategory }): ReactNode {
   return (
-    <span className="pr-badge pr-badge--red" data-armor={category}>
+    <span className="pm-chip pm-chip--blocked" data-armor={category}>
+      <Icon name="gpp_bad" />
       {ARMOR_LABELS[category] ?? 'Finding'}
     </span>
   );
 }
 
-const CHANNEL_LABELS: Record<string, string> = {
-  portal: 'Keyed in the ERP',
-  email: 'Instruction by email',
-  chat: 'Instruction by chat',
-  phone: 'Instruction by phone',
-  agent: 'Raised by an AI agent',
+const CHANNEL_LOOK: Record<string, { icon: string; label: string; loud: boolean }> = {
+  portal: { icon: 'keyboard', label: 'Keyed in the ERP', loud: false },
+  email: { icon: 'mail', label: 'Instruction by email', loud: false },
+  chat: { icon: 'chat', label: 'Instruction by chat', loud: true },
+  phone: { icon: 'call', label: 'Instruction by phone', loud: false },
+  agent: { icon: 'smart_toy', label: 'Raised by an AI agent', loud: true },
 };
 
 export function ChannelBadge({ channel }: { channel: string }): ReactNode {
-  const tone = channel === 'chat' || channel === 'agent' ? 'amber' : 'grey';
+  const look = CHANNEL_LOOK[channel] ?? { icon: 'label', label: channel, loud: false };
   return (
-    <span className={`pr-badge pr-badge--${tone}`}>
-      {CHANNEL_LABELS[channel] ?? channel}
+    <span className={`pm-chip ${look.loud ? 'pm-chip--held' : 'pm-chip--expired'}`}>
+      <Icon name={look.icon} />
+      {look.label}
     </span>
   );
 }

@@ -65,6 +65,9 @@ export {
   type InstructionChannel,
   type InvoiceExtraction,
   type InvoiceField,
+  type Lane,
+  type PayeeChecks,
+  type RuleHit,
   type KeySecurityLevel,
   type ModelArmorCategory,
   type ModelArmorFinding,
@@ -112,6 +115,8 @@ export {
 
 // Components
 export {
+  Banner,
+  type BannerTone,
   CouldNotVerify,
   EmptyState,
   type EmptyStateProps,
@@ -127,8 +132,12 @@ export {
   ReasonSourceTag,
   StatusBadge,
   TierBadge,
+  bandModifier,
+  reasonIcon,
 } from './components/Badges';
 
-export { Money, type MoneyProps } from './components/Money';
-export { PramaanMark } from './components/PramaanMark';
-export { AppHeader, type AppHeaderProps } from './components/AppHeader';
+export { AmountBlock, type AmountBlockProps, Money, type MoneyProps } from './components/Money';
+export { PramaanLockup, PramaanMark } from './components/PramaanMark';
+export { Avatar } from './components/Avatar';
+export { Icon, type IconProps } from './components/Icon';
+export { StateBand, type StateBandProps } from './components/StateBand';

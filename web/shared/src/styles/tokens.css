@@ -1,96 +1,80 @@
 /*
  * Pramaan design tokens.
  *
- * PLACEHOLDER VALUES. These are deliberately plain, and are meant to be replaced
- * wholesale with the Stitch design system's colours, type and spacing. Every
- * screen reads these variables and never a literal colour, so swapping in the
- * Stitch values changes the whole web lane in one file.
+ * From the Pramaan Brand Kit, Part C. These are the only colours, sizes and
+ * radii in the product. Light theme only: there is no dark mode, by decision.
  *
- * The one rule that is not a placeholder: status colours carry meaning only, and
- * never alone. Amber is held, red is blocked or declined, green is released, and
- * each always appears with its own text label.
+ * Every screen reads these variables and never a literal colour, so the whole
+ * web lane restyles from this one file.
  */
 
 :root {
-  /* Surfaces and text */
-  --pr-bg: #f6f7f9;
-  --pr-surface: #ffffff;
-  --pr-surface-sunken: #f0f2f5;
-  --pr-border: #d9dee5;
-  --pr-border-strong: #b6bfcc;
-  --pr-text: #16202c;
-  --pr-text-muted: #5a6675;
-  --pr-text-inverse: #ffffff;
-
-  /* Brand (placeholder) */
-  --pr-brand: #1f4fd8;
-  --pr-brand-dark: #16399c;
-  --pr-brand-tint: #e8eeff;
-
-  /* Status: amber held, green released, red blocked or declined */
-  --pr-held: #9a5b00;
-  --pr-held-bg: #fdf0d8;
-  --pr-held-border: #e8c07a;
-
-  --pr-released: #10653a;
-  --pr-released-bg: #dff3e6;
-  --pr-released-border: #85c79f;
-
-  --pr-blocked: #9c1f1f;
-  --pr-blocked-bg: #fbe3e3;
-  --pr-blocked-border: #e09494;
-
-  --pr-approved: #1b4b8f;
-  --pr-approved-bg: #e3edfb;
-  --pr-approved-border: #93b6e3;
-
-  --pr-neutral: #4b5563;
-  --pr-neutral-bg: #eceff3;
-  --pr-neutral-border: #c8d0da;
-
-  /* The AI-written marker. Distinct from every status colour on purpose, so
-     "written by Gemini" can never be mistaken for a pass or a failure. */
-  --pr-ai: #5b3ea8;
-  --pr-ai-bg: #efe9fb;
-  --pr-ai-border: #bda8e6;
-
-  /* Type */
-  --pr-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
-  --pr-font-mono: ui-monospace, 'Cascadia Mono', 'Consolas', 'Noto Sans Mono', monospace;
-  --pr-text-xs: 0.75rem;
-  --pr-text-sm: 0.875rem;
-  --pr-text-base: 1rem;
-  --pr-text-lg: 1.125rem;
-  --pr-text-xl: 1.375rem;
-  --pr-text-2xl: 1.75rem;
-  --pr-text-3xl: 2.25rem;
-
-  /* Spacing */
-  --pr-space-1: 0.25rem;
-  --pr-space-2: 0.5rem;
-  --pr-space-3: 0.75rem;
-  --pr-space-4: 1rem;
-  --pr-space-5: 1.5rem;
-  --pr-space-6: 2rem;
-  --pr-space-8: 3rem;
-
-  /* Shape */
-  --pr-radius-sm: 4px;
-  --pr-radius: 8px;
-  --pr-radius-lg: 14px;
-  --pr-shadow: 0 1px 2px rgba(22, 32, 44, 0.06), 0 2px 8px rgba(22, 32, 44, 0.05);
-  --pr-shadow-lg: 0 8px 28px rgba(22, 32, 44, 0.12);
-
-  /* Layout */
-  --pr-max-width: 1200px;
-
-  /* Presenter mode scales type up for a projector. See the presenter view. */
-  --pr-scale: 1;
+  --background: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-container: #F0F4F9;
+  --surface-container-high: #E9EEF6;
+  --band: #C2DBFF;
+  --band-held: #FFE2AE;
+  --band-released: #C8EED2;
+  --band-blocked: #FFD9D4;
+  --seal-line: #FFFFFF;
+  --line: #E1E3E1;
+  --line-strong: #747775;
+  --ink: #1F1F1F;
+  --ink-muted: #444746;
+  --primary: #0B57D0;
+  --on-primary: #FFFFFF;
+  --primary-deep: #062E6F;
+  --primary-container: #D3E3FD;
+  --on-primary-container: #041E49;
+  --secondary-container: #C2E7FF;
+  --on-secondary-container: #001D35;
+  --held: #7A4100;
+  --held-soft: #FFEFD6;
+  --blocked: #B3261E;
+  --blocked-soft: #FCE8E6;
+  --on-blocked: #FFFFFF;
+  --released: #146C2E;
+  --released-soft: #E6F4EA;
+  --neutral-soft: #E9EEF6;
+  --tier-high: #8E3A00;
+  --tier-high-soft: #FFDBC8;
+  --focus: #0B57D0;
+  --erp-chrome: #2F343B;
+  --on-erp-chrome: #F2F4F7;
+  --shadow-card: 0 1px 2px rgba(60, 64, 67, 0.12), 0 1px 3px 1px rgba(60, 64, 67, 0.08);
+  --shadow-pop: 0 4px 8px 3px rgba(60, 64, 67, 0.15), 0 1px 3px rgba(60, 64, 67, 0.3);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  --font-display: "Google Sans Flex", "Google Sans", Roboto, system-ui, sans-serif;
+  --font-sans: "Google Sans Flex", "Google Sans", Roboto, "Noto Sans Tamil", "Noto Sans Devanagari", system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, Menlo, monospace;
 }
 
+.t-display { font-family: var(--font-display); font-size: 40px; line-height: 46px; font-weight: 500; letter-spacing: -0.01em; }
+.t-title { font-family: var(--font-display); font-size: 28px; line-height: 34px; font-weight: 400; }
+.t-heading { font-family: var(--font-sans); font-size: 17px; line-height: 24px; font-weight: 500; }
+.t-body { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 400; }
+.t-body-strong { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 500; }
+.t-small { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 400; }
+.t-label { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.02em; }
+.t-amount-xl { font-family: var(--font-sans); font-size: 56px; line-height: 60px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.t-amount { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.t-amount-words { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.t-mono { font-family: var(--font-mono); font-size: 13px; line-height: 18px; font-weight: 400; }
+
 /*
- * Presenter view: large type that reads from the back of a hall. Applied by
- * setting data-presenter="true" on the document element.
+ * Presenter view: large type that reads from the back of a hall, applied by
+ * setting data-presenter="true" on the document element. Not a brand token;
+ * a demo affordance the build plan asks for in M6.
  */
 :root[data-presenter='true'] {
   --pr-scale: 1.35;

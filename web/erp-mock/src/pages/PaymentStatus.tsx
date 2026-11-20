@@ -1,34 +1,33 @@
 /**
  * One payment's live status, in the clerk's words.
  *
- * The clerk sees three outcomes: waiting for approval, paid, or stopped. They do
- * not see the attestation chain or the mandate: that is the finance team's view,
- * in the Pramaan console. Here the question is only "can I tell the vendor the
+ * Three outcomes: waiting for approval, paid, or stopped. The clerk does not
+ * see the attestation chain or the mandate; that is the finance team's view in
+ * the Pramaan console. Here the question is only "can I tell the vendor the
  * money is on its way?".
  *
- * Live from Firestore, so the chip changes under the clerk's eyes the moment the
- * approver signs. That is demo moment 2, seen from the ERP's side.
+ * Live from Firestore, so the status changes under the clerk's eyes the moment
+ * the approver signs. That is demo moment 2, seen from the ERP's side.
  */
 
 import {
   COLLECTIONS,
-  EmptyState,
   ErrorState,
   type Hold,
   type HoldStatus,
   LoadingState,
-  Money,
   type Step,
   StatusBadge,
-  formatIstWithRelative,
+  formatIstTime,
+  formatMoney,
   maskAccount,
+  relativeTime,
   useLiveDocument,
   useLiveSubcollection,
 } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-/** What each status means to the person who keyed the payment. */
 const CLERK_WORDING: Record<HoldStatus, { headline: string; detail: string }> = {
   held: {
     headline: 'Waiting for approval',
@@ -39,14 +38,10 @@ const CLERK_WORDING: Record<HoldStatus, { headline: string; detail: string }> = 
     headline: 'Approved, releasing',
     detail: 'The approver signed it. Pramaan is releasing the payment to the bank.',
   },
-  released: {
-    headline: 'Paid',
-    detail: 'The money has left Acme’s account.',
-  },
+  released: { headline: 'Paid', detail: 'The money has left Acme’s account.' },
   blocked: {
     headline: 'Stopped',
-    detail:
-      'This payment was stopped and no money moved. Finance can tell you why.',
+    detail: 'This payment was stopped and no money moved. Finance can tell you why.',
   },
   declined: {
     headline: 'Stopped',
@@ -58,7 +53,6 @@ const CLERK_WORDING: Record<HoldStatus, { headline: string; detail: string }> = 
   },
 };
 
-/** The clerk's view of the timeline: no crypto, just what happened. */
 const STEP_WORDING: Record<string, string> = {
   created: 'You created this payment',
   scored: 'Pramaan checked it against the rules',
@@ -77,93 +71,94 @@ export function PaymentStatus(): ReactNode {
   const steps = useLiveSubcollection<Step>(COLLECTIONS.holds, intentId, 'steps');
 
   if (payment.status === 'loading') return <LoadingState label="Loading this payment" />;
-
   if (payment.status === 'error') {
-    return <ErrorState title="Could not load this payment" error={payment.error} />;
+    return <ErrorState title="We could not load this payment" error={payment.error} />;
   }
 
   if (!payment.data) {
     return (
-      <EmptyState
-        title="No such payment"
-        detail={`Acme ERP has nothing recorded for ${intentId ?? 'this id'}.`}
-      >
-        <Link to="/" className="pr-button">
-          Back to payments
-        </Link>
-      </EmptyState>
+      <div className="erp-empty">
+        Acme ERP has nothing recorded for {intentId ?? 'this id'}.{' '}
+        <Link to="/">Back to the payment run</Link>.
+      </div>
     );
   }
 
   const hold = payment.data;
   const wording = CLERK_WORDING[hold.status];
-  const created = formatIstWithRelative(hold.createdAt);
   const ordered = [...steps.data].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
 
   return (
-    <div className="pr-stack">
-      <p>
-        <Link to="/">&larr; All payments</Link>
+    <div>
+      <p style={{ marginTop: 0 }}>
+        <Link to="/">&larr; Payment run</Link>
       </p>
 
-      <section className="pr-card pr-stack">
-        <div className="pr-spread">
-          <div>
-            <h1 className="pr-h1">{hold.payeeName}</h1>
-            <p className="pr-muted">
+      <h1>
+        {hold.payeeName}
+        {hold.purpose ? ` · ${hold.purpose}` : ''}
+      </h1>
+
+      <table className="erp-table" style={{ maxWidth: 560, marginBottom: 12 }}>
+        <tbody>
+          <tr>
+            <th style={{ width: 160 }}>Amount</th>
+            <td>{formatMoney(hold.amountPaise, { symbol: false, paise: 'always' })} INR</td>
+          </tr>
+          <tr>
+            <th>Account</th>
+            <td>
               {maskAccount(hold.payeeAccountLast4)} &middot; {hold.payeeIfsc}
-              {hold.purpose ? ` · ${hold.purpose}` : ''}
-            </p>
-          </div>
-          <StatusBadge status={hold.status} />
+            </td>
+          </tr>
+          <tr>
+            <th>Status</th>
+            <td>
+              <StatusBadge status={hold.status} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="erp-note">
+        <strong>{wording.headline}.</strong> {wording.detail}
+        {hold.status === 'held' ? ' This page updates on its own.' : ''}
+      </div>
+
+      <h2>Progress</h2>
+      {steps.status === 'loading' ? (
+        <LoadingState label="Loading progress" />
+      ) : ordered.length === 0 ? (
+        <div className="erp-empty">Nothing has happened yet.</div>
+      ) : (
+        <div className="erp-table-wrap">
+          <table className="erp-table" style={{ maxWidth: 640 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 90 }}>Step</th>
+                <th>What happened</th>
+                <th style={{ width: 150 }}>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map((step) => (
+                <tr key={step.id}>
+                  <td>{step.n}</td>
+                  <td>{STEP_WORDING[step.step] ?? step.detail}</td>
+                  <td>
+                    {formatIstTime(step.at) ?? '—'}
+                    <div style={{ fontSize: 11, color: '#5A6169' }}>
+                      {relativeTime(step.at) ?? ''}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
 
-        <Money paise={hold.amountPaise} withWords />
-
-        <div>
-          <h2 className="pr-h2">{wording.headline}</h2>
-          <p className="pr-muted">{wording.detail}</p>
-        </div>
-
-        {hold.status === 'held' ? (
-          <p className="pr-fineprint">
-            This page updates on its own. You do not need to refresh it.
-          </p>
-        ) : null}
-
-        {created ? (
-          <p className="pr-fineprint">
-            Created {created.relative} &middot; {created.absolute}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="pr-card pr-stack" aria-labelledby="progress-heading">
-        <h2 id="progress-heading" className="pr-h2">
-          Progress
-        </h2>
-
-        {steps.status === 'loading' ? (
-          <LoadingState label="Loading progress" />
-        ) : ordered.length === 0 ? (
-          <EmptyState title="Nothing has happened yet" />
-        ) : (
-          <ol className="pr-timeline">
-            {ordered.map((step) => {
-              const at = formatIstWithRelative(step.at);
-              return (
-                <li key={step.id} className="pr-timeline__item" data-step={step.step}>
-                  <span className="pr-timeline__step">{step.step}</span>
-                  <span>{STEP_WORDING[step.step] ?? step.detail}</span>
-                  <span className="pr-fineprint">{at ? at.relative : ''}</span>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </section>
-
-      <p className="pr-fineprint">
+      <p className="erp-hint" style={{ marginTop: 10 }}>
         An accounts clerk cannot approve a payment. If this is urgent, ask the
         approver to check their phone; do not ask anyone to bypass Pramaan.
       </p>

@@ -2,14 +2,17 @@
  * Acme ERP, the mock customer system.
  *
  * Two products are on screen in this demo. This app is the customer's own
- * software: a fictional company, Acme Auto Components Pvt Ltd, with an accounts
- * clerk who keys payments. Pramaan is the control it plugs into, and the ERP's
- * Pay button goes through Pramaan.
+ * software: deliberately older-looking, grey, square and dense, so it never
+ * reads as Pramaan. That contrast is the point. When the friendly Pramaan
+ * pieces appear inside it, the "Protected by Pramaan" badge and the Held
+ * status, they stand out as something else entirely.
+ *
+ * The fictional company is Acme Auto Components Pvt Ltd.
  *
  * The clerk can never approve. That is not a missing feature; it is the point.
  */
 
-import { AppHeader, RoleGate, useAuth } from '@pramaan/shared';
+import { PramaanMark, RoleGate, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { AgentRun } from './pages/AgentRun';
@@ -21,29 +24,53 @@ import { Vendors } from './pages/Vendors';
 
 function ErpShell({ children }: { children: ReactNode }): ReactNode {
   const { user, signOut } = useAuth();
+
   return (
-    <div className="pr-shell">
-      <AppHeader
-        appName="Acme ERP"
-        email={user?.email ?? null}
-        onSignOut={signOut}
-        nav={
-          <>
-            <NavLink to="/" className="pr-navlink" end>
-              Payments
-            </NavLink>
-            <NavLink to="/vendors" className="pr-navlink">
-              Vendors
-            </NavLink>
-            <NavLink to="/new" className="pr-navlink">
-              New payment
-            </NavLink>
-          </>
-        }
-      >
-        <span className="pr-badge pr-badge--grey">Protected by Pramaan</span>
-      </AppHeader>
-      <main className="pr-main">{children}</main>
+    <div className="erp-shell">
+      <nav className="erp-side" aria-label="Acme ERP sections">
+        <strong>ACME ERP</strong>
+        <NavLink to="/" end>
+          Payment run
+        </NavLink>
+        <NavLink to="/vendors">Vendors</NavLink>
+        <NavLink to="/new">New payment</NavLink>
+        <a href="/bank">Sandbox bank</a>
+        <div style={{ flex: 1 }} />
+        {user?.email ? (
+          <span style={{ fontSize: 11, opacity: 0.8, wordBreak: 'break-all' }}>
+            {user.email}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          style={{
+            background: 'none',
+            border: 0,
+            color: 'inherit',
+            textAlign: 'left',
+            padding: '4px 6px',
+            cursor: 'pointer',
+            font: 'inherit',
+            textDecoration: 'underline',
+          }}
+        >
+          Sign out
+        </button>
+      </nav>
+
+      <main className="erp-main">
+        <div className="erp-bar">
+          <span style={{ fontSize: 12, color: '#5A6169' }}>
+            Acme Auto Components Pvt Ltd &middot; Accounts payable
+          </span>
+          <span className="pm-protected">
+            <PramaanMark size={18} />
+            Protected by Pramaan
+          </span>
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
@@ -63,7 +90,7 @@ function ClerkRoute({ children }: { children: ReactNode }): ReactNode {
 export function App(): ReactNode {
   return (
     <Routes>
-      {/* Public: no sign-in, by design. */}
+      {/* Public: no sign-in, by design. The sandbox bank is a Pramaan surface. */}
       <Route path="/bank" element={<SandboxBank />} />
 
       <Route
