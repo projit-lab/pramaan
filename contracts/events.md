@@ -13,6 +13,7 @@ Prajit owns the backend event publishers and subscribers; Shoaib owns the web fr
 | `intent-created` | `intent.created` | A payment intent is accepted requiring evaluation and potential hold | ERP Mock / API Gateway | Ledger Writer (BigQuery), Firestore Projector |
 | `intent-decided` | `intent.decided` | The policy engine and AI agent evaluate an intent and return release, hold, or block | Payables AI Agent | Pramaan API, Firestore Projector, Push Notifier (FCM) |
 | `approval-signed` | `approval.signed` | An approver cryptographically signs the payment approval on their hardware-backed mobile device | Approver Android App (via API) | Mandate Engine, Firestore Projector, Ledger Writer |
+| `approval-voice-checked` | `approval.voice_checked` | A Tier 2 spoken check finishes a try: matched, wrong code, expired, or fallen back to a call-back (M4) | Pramaan API | Ledger Writer, Firestore Projector |
 | `mandate-issued` | `mandate.issued` | A cryptographically verified payment mandate is generated and signed with the Cloud KMS HSM key | Pramaan API (HSM Signer) | Payment Release Worker, Firestore Projector, Ledger Writer |
 | `payment-released` | `payment.released` | Payment release execution is confirmed by the banking gateway / payout rail | Payment Executor Worker | ERP Mock, Firestore Projector, Ledger Writer |
 | `payment-blocked` | `payment.blocked` | Payment is blocked due to policy rejection, approver denial, or anomaly detection | Risk Agent / Pramaan API | ERP Mock, Firestore Projector, Push Notifier, Auditor |
@@ -101,6 +102,30 @@ Every message carries a uniform envelope so the ledger writer, firestore project
 }
 ```
 
+### `approval.voice_checked`
+
+Published once per `complete` call on `POST /approvals/{approvalId}/voice`, and once
+when a fourth code is refused. Envelope `actor` is the approver
+(`{ "type": "human", "id": "<uid>" }`).
+
+No audio and no transcript are ever sent or stored, and the digits themselves never
+appear: `digits_sha256` is the SHA-256 of `approval_id|nonce|digits`, or `null`
+when no digits were sent (a fourth code refused).
+
+```json
+{
+  "approval_id": "ap_01JD2X...",
+  "voice_id": "vs_01JD2X...",
+  "language": "ta",
+  "result": "passed",
+  "attempt": 2,
+  "digits_sha256": "d8cd4cf0..."
+}
+```
+
+`result` is one of `passed`, `mismatch`, `expired`, `fallback_callback`. For a
+tier 2 or higher payment the mandate is issued only after `passed`.
+
 ### `mandate.issued`
 ```json
 {
@@ -151,13 +176,15 @@ Every message carries a uniform envelope so the ledger writer, firestore project
 ## Step Names & Payment Timeline Mapping
 
 The `step` values stored in `holds/{intentId}/steps` are:
-`created`, `scored`, `held`, `pushed`, `signed`, `verified`, `countersigned`, `released`, `blocked`.
+`created`, `scored`, `held`, `pushed`, `signed`, `verified`, `voice_started`, `voice_verified`, `voice_failed`, `countersigned`, `released`, `blocked`.
 
 These lifecycle steps correspond to events as follows:
 - `created`: Originates from `intent.created`.
 - `scored` and `held`: Derived from `intent.decided`.
 - `pushed`: Recorded by the push notification service when FCM message dispatch succeeds.
 - `signed` and `verified`: Emitted upon `approval.signed` and server-side signature validation.
+- `voice_started`: Tier 2 only. The API issued the spoken one-time code.
+- `voice_verified` and `voice_failed`: Tier 2 only. From `approval.voice_checked` with `result` `passed`, or `fallback_callback` / `expired`. The detail line of `voice_failed` says whether a call-back follows.
 - `countersigned`: Emitted when Cloud KMS signs the mandate (`mandate.issued`).
 - `released`: Final release confirmation (`payment.released`).
 - `blocked`: Terminal rejection or security refusal (`payment.blocked`).

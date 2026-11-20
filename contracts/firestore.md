@@ -81,7 +81,7 @@ step number so ordering is stable.
 | Field | Type | Notes |
 | :--- | :--- | :--- |
 | `n` | number | 1, 2, 3 ... |
-| `step` | string | `created`, `scored`, `held`, `pushed`, `signed`, `verified`, `countersigned`, `released`, `blocked` |
+| `step` | string | `created`, `scored`, `held`, `pushed`, `signed`, `verified`, `voice_started`, `voice_verified`, `voice_failed`, `countersigned`, `released`, `blocked`. The three `voice_` steps appear only on Tier 2 and higher payments (M4) |
 | `at` | timestamp | |
 | `detail` | string or null | one line, plain language |
 

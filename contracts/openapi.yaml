@@ -20,7 +20,7 @@ info:
       - Money is an integer number of paise, sent as a string. Rupees 46.5 lakh is "465000000".
       - Time is ISO 8601 with the +05:30 offset.
       - IDs are prefixed ULIDs: pi_ intent, ap_ approval, pm_ mandate, dv_ device,
-        vd_ vendor, ag_ agent request, po_ payout.
+        vd_ vendor, ag_ agent request, po_ payout, vs_ voice session.
       - Errors are problem details (RFC 9457).
       - Account numbers are masked to the last four digits everywhere except the
         canonical summary the approver signs.
@@ -471,7 +471,24 @@ paths:
     post:
       tags: [approvals]
       summary: Start and complete the Tier 2 spoken check
-      description: Stub. Prajit owns Gemini Live voice. Lands in M4.
+      description: |
+        Called by the Android app only. Lands in M4 (Danish; Prajit approves the
+        server pieces).
+
+        Runs only after the Tier 1 signature on this approval has been verified,
+        and only at tier 2 and above. It adds a check after the signature; it
+        never replaces it. It is a deliberate confirmation through a second
+        channel, not voice identification.
+
+        `start` issues a six-digit one-time code bound to this approval and its
+        nonce, valid for two minutes and usable once. The app shows it, and the
+        approver speaks it to Gemini Live, which can call only
+        `submit_spoken_code(digits)`. `complete` sends the digits the approver
+        confirmed on screen. Only an exact match passes. Three wrong tries end
+        the step and fall back to a call-back; a new code never resets the
+        count, and at most three codes are issued per approval.
+
+        No audio is sent or stored. The ledger keeps only the result and a hash.
       operationId: approvalVoice
       parameters:
         - $ref: '#/components/parameters/ApprovalId'
@@ -480,23 +497,81 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Owned by Prajit.
-              additionalProperties: true
+              oneOf:
+                - $ref: '#/components/schemas/VoiceStart'
+                - $ref: '#/components/schemas/VoiceComplete'
+              discriminator:
+                propertyName: action
+                mapping:
+                  start: '#/components/schemas/VoiceStart'
+                  complete: '#/components/schemas/VoiceComplete'
+            examples:
+              start:
+                summary: Ask for a code, in Tamil
+                value:
+                  action: start
+                  language: ta
+              complete:
+                summary: Send the digits the approver confirmed
+                value:
+                  action: complete
+                  voice_id: vs_01JD2XVOICE00001
+                  digits: "482913"
       responses:
         '200':
-          description: The spoken check result
+          description: The state of the spoken check
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  matched:
-                    type: boolean
-                  attempts_remaining:
-                    type: integer
+                $ref: '#/components/schemas/VoiceStepState'
+              examples:
+                started:
+                  summary: Code issued; the app shows it
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: awaiting_code
+                    matched: false
+                    attempts_remaining: 3
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
+                    code: "482913"
+                passed:
+                  summary: Exact match
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: passed
+                    matched: true
+                    attempts_remaining: 3
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
+                fallback:
+                  summary: Three wrong tries; finance calls the approver back
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: fallback_callback
+                    matched: false
+                    attempts_remaining: 0
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The Tier 1 signature is not verified yet, the tier is below 2, the
+            step has already passed or fallen back, or there is no active code.
+            The problem `type` ends in tier1-not-verified, tier-too-low,
+            voice-finished or no-active-code.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /gate/release:
     post:
       tags: [gate]
@@ -1836,11 +1911,64 @@ components:
           type: integer
         step:
           type: string
-          enum: [created, scored, held, pushed, signed, verified, countersigned, released, blocked]
+          enum: [created, scored, held, pushed, signed, verified, voice_started, voice_verified, voice_failed, countersigned, released, blocked]
         at:
           $ref: '#/components/schemas/Timestamp'
         detail:
           type: [string, 'null']
+    VoiceLanguage:
+      type: string
+      enum: [ta, hi, en]
+      description: The language the approver speaks to Gemini Live.
+    VoiceStart:
+      type: object
+      required: [action, language]
+      properties:
+        action:
+          type: string
+          const: start
+        language:
+          $ref: '#/components/schemas/VoiceLanguage'
+    VoiceComplete:
+      type: object
+      required: [action, voice_id, digits]
+      properties:
+        action:
+          type: string
+          const: complete
+        voice_id:
+          type: string
+          pattern: "^vs_[A-Za-z0-9]+$"
+        digits:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: Exactly six ASCII digits, as the approver confirmed them on screen.
+    VoiceStepState:
+      type: object
+      required: [approval_id, voice_id, status, matched, attempts_remaining, language, expires_at]
+      properties:
+        approval_id:
+          type: string
+        voice_id:
+          type: string
+        status:
+          type: string
+          enum: [awaiting_code, passed, retry, expired, fallback_callback]
+        matched:
+          type: boolean
+          description: True only when status is passed.
+        attempts_remaining:
+          type: integer
+          minimum: 0
+          maximum: 3
+        language:
+          $ref: '#/components/schemas/VoiceLanguage'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: Only in the answer to start. The app shows it; it is never logged.
     ApprovalSummary:
       type: object
       required: [approval_id, intent_id, tier, amount_paise, payee_name_at_bank, status]
