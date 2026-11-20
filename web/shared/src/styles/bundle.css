@@ -48,6 +48,9 @@
 .pm-chip--released { background: var(--released-soft); color: var(--released); }
 .pm-chip--blocked, .pm-chip--declined { background: var(--blocked-soft); color: var(--blocked); }
 .pm-chip--expired { background: var(--neutral-soft); color: var(--ink-muted); }
+/* The door a payment arrived by is a fact, not a verdict, so it borrows no
+   status colour: nobody should read "from a bank file" as a warning. */
+.pm-chip--route { background: var(--surface); color: var(--ink-muted); border: 1px solid var(--line); }
 
 /* TierBadge */
 .pm-tier { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-sm); font: 500 12px/16px var(--font-sans); background: var(--neutral-soft); color: var(--ink); }
@@ -382,6 +385,25 @@ fieldset.pm-field legend { padding: 0 var(--space-2); font-size: 14px; font-weig
 .erp-err { color: #B3261E; font-size: 12px; margin-top: 3px; }
 .erp-hint { color: #5A6169; font-size: 12px; margin-top: 3px; }
 .erp-note { border: 1px solid #C9CED6; background: #FFFDF0; padding: 8px 10px; font-size: 13px; margin-bottom: 10px; }
+/* Hack us live. Deliberately the ERP's own chrome, with a warning edge: this is
+   the customer's compromised system, not a Pramaan surface. */
+/* A button that reads as a link, for an action offered inside a sentence. */
+.erp-linkbtn { background: none; border: none; padding: 0; font: inherit; color: #0B57D0; text-decoration: underline; cursor: pointer; }
+/* The one button on an ERP page that is the page's purpose. */
+.erp-btn--primary { font-weight: 700; border-color: #5A6169; }
+
+.erp-admin { border: 2px solid #B3261E; background: #FFF6F5; padding: 10px 12px; margin-top: 16px; }
+.erp-admin__title { font: 700 14px/1.2 Tahoma, Verdana, sans-serif; margin: 0 0 6px; color: #8C1D18; }
+.erp-admin__row { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 4px 12px; font-size: 13px; margin: 10px 0; }
+.erp-admin__row dt { color: #5A6169; }
+.erp-admin__row dd { margin: 0; }
+.erp-admin__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.erp-admin__out { border: 1px solid #C9CED6; background: #FFFFFF; padding: 8px 10px; font-size: 13px; margin-top: 10px; }
+.erp-admin__out--changed { border-color: #B26A00; background: #FFF8E8; }
+.erp-admin__out--refused { border-color: #1B7F4B; background: #F0FAF4; }
+.erp-admin__out--released { border-color: #B3261E; background: #FFF6F5; }
+@media (max-width: 560px) { .erp-admin__row { grid-template-columns: 1fr; } }
+
 .erp-fieldset { border: 1px solid #C9CED6; padding: 8px 10px; margin: 0 0 10px; }
 .erp-fieldset legend { font-weight: 700; font-size: 13px; padding: 0 4px; }
 .erp-radio { display: block; padding: 3px 0; font-size: 13px; cursor: pointer; }

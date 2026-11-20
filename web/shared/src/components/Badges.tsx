@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
-import type { HoldStatus, ModelArmorCategory, ReasonSource } from '../types/firestore';
+import type { EntryRoute, HoldStatus, ModelArmorCategory, ReasonSource } from '../types/firestore';
 import { Icon } from './Icon';
 
 interface ChipLook {
@@ -162,6 +162,37 @@ export function ChannelBadge({ channel }: { channel: string }): ReactNode {
   return (
     <span className={`pm-chip ${look.loud ? 'pm-chip--held' : 'pm-chip--expired'}`}>
       <Icon name={look.icon} />
+      {look.label}
+    </span>
+  );
+}
+
+/**
+ * Which door a payment came through.
+ *
+ * Four systems can start a payment and the demo fires all four at once. The
+ * badge exists so an approver and the console can see that the gate treated
+ * them identically: a bank file gets no more trust than a human typing, and an
+ * agent gets no less scrutiny than either. The route is a fact about where the
+ * instruction arrived from, never a judgement about it, so none of these is
+ * coloured as a warning.
+ */
+const ROUTE_LOOK: Record<EntryRoute, { icon: string; label: string }> = {
+  erp: { icon: 'desktop_windows', label: 'From the ERP' },
+  bank_file: { icon: 'description', label: 'From a bank file' },
+  payout_api: { icon: 'api', label: 'From the payout API' },
+  agent: { icon: 'smart_toy', label: 'From an AI agent' },
+};
+
+export function RouteBadge({ route }: { route: EntryRoute | null | undefined }): ReactNode {
+  // A row written before the doors existed says nothing rather than guessing
+  // "ERP", which would be a claim about provenance we cannot support.
+  if (!route) return null;
+  const look = ROUTE_LOOK[route];
+  if (!look) return null;
+  return (
+    <span className="pm-chip pm-chip--route" data-route={route}>
+      <Icon name={look.icon} size="sm" />
       {look.label}
     </span>
   );
