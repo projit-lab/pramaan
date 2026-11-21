@@ -16,6 +16,7 @@ import {
   Icon,
   LoadingState,
   Money,
+  RouteBadge,
   StateBand,
   StatusBadge,
   TierBadge,
@@ -192,6 +193,10 @@ export function HoldsBoard(): ReactNode {
                             <div className="pm-mono pm-muted">
                               {maskAccount(hold.payeeAccountLast4)}
                             </div>
+                            {/* Which door it came through, under the account rather
+                                than in a column of its own: the board already has
+                                six columns and a phone scrolls past four. */}
+                            <RouteBadge route={hold.entryRoute} />
                           </div>
                         </div>
                       </td>

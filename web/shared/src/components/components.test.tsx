@@ -17,6 +17,7 @@ import {
   ReasonSourceTag,
   StatusBadge,
   TierBadge,
+  RouteBadge,
   bandModifier,
 } from './Badges';
 import { AmountBlock, Money } from './Money';
@@ -221,5 +222,33 @@ describe('Banner', () => {
   it('uses the tone the caller asked for', () => {
     const { container } = render(<Banner tone="held">Waiting.</Banner>);
     expect(container.firstElementChild?.className).toContain('pm-banner--held');
+  });
+});
+
+describe('RouteBadge', () => {
+  it('names each of the four doors in words', () => {
+    for (const [route, label] of [
+      ['erp', 'From the ERP'],
+      ['bank_file', 'From a bank file'],
+      ['payout_api', 'From the payout API'],
+      ['agent', 'From an AI agent'],
+    ] as const) {
+      const { unmount } = render(<RouteBadge route={route} />);
+      expect(screen.getByText(label)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('says nothing at all for a payment with no recorded route', () => {
+    const { container } = render(<RouteBadge route={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('does not dress a route up as a warning', () => {
+    const { container } = render(<RouteBadge route="bank_file" />);
+    const className = container.firstElementChild?.className ?? '';
+    expect(className).toContain('pm-chip--route');
+    expect(className).not.toContain('blocked');
+    expect(className).not.toContain('held');
   });
 });

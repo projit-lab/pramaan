@@ -27,6 +27,7 @@ import {
 } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AdminTamperPanel } from '../components/AdminTamperPanel';
 
 const CLERK_WORDING: Record<HoldStatus, { headline: string; detail: string }> = {
   held: {
@@ -162,6 +163,9 @@ export function PaymentStatus(): ReactNode {
         An accounts clerk cannot approve a payment. If this is urgent, ask the
         approver to check their phone; do not ask anyone to bypass Pramaan.
       </p>
+
+      {/* Demo scene 5. Renders only where the demo runs. */}
+      <AdminTamperPanel payment={hold} />
     </div>
   );
 }
