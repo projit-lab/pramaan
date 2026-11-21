@@ -10,6 +10,8 @@ import json
 import logging
 from typing import Any
 
+from fastapi import Request
+
 from app.domain.ids import new_id
 from app.domain.voice import ApprovalView
 
@@ -28,7 +30,11 @@ class SeededApprovals:
 
     def reset(self) -> None:
         self.rows = {}
-        for name, tier, verified in [("tier2", 2, True), ("tier2_unsigned", 2, False), ("tier1", 1, True)]:
+        for name, tier, verified in [
+            ("tier2", 2, True),
+            ("tier2_unsigned", 2, False),
+            ("tier1", 1, True),
+        ]:
             self.rows[name] = ApprovalView(
                 approval_id=new_id("ap"),
                 intent_id=new_id("pi"),
@@ -76,22 +82,44 @@ def wire_voice_demo(app: Any) -> None:
 
     from app.domain.voice import InMemoryVoiceStore, VoiceService
     from app.routers import voice
+    from app.runtime import get_runtime
+    from app.services.voice_flow import CombinedApprovals, DbApprovals, FlowEvents
 
     approvals = SeededApprovals()
     events = RecordingEvents()
+    secret = os.environ.get("PRAMAAN_VOICE_SECRET", "").encode() or _secrets.token_bytes(32)
+    store = {"store": InMemoryVoiceStore()}
 
-    def build() -> VoiceService:
-        secret = os.environ.get("PRAMAAN_VOICE_SECRET", "").encode() or _secrets.token_bytes(32)
+    def build(rt: Any) -> VoiceService:
+        # Real approvals (Tier 2 in the live flow) first, then the seeded demo ones.
         return VoiceService(
-            approvals=approvals, store=InMemoryVoiceStore(), events=events, secret=secret
+            approvals=CombinedApprovals(DbApprovals(rt), approvals),
+            store=store["store"],
+            events=FlowEvents(rt, events),
+            secret=secret,
         )
 
-    state = {"service": build()}
-    app.dependency_overrides[voice.get_voice_service] = lambda: state["service"]
+    state: dict[str, Any] = {"service": None}
 
-    def demo_uid(x_demo_uid: str = Header(...)) -> str:
-        # Local stand-in for the Firebase ID token check.
-        return x_demo_uid
+    def service(request: Request) -> VoiceService:
+        if state["service"] is None:
+            state["service"] = build(get_runtime(request))
+        return state["service"]
+
+    app.dependency_overrides[voice.get_voice_service] = service
+
+    def demo_uid(
+        x_demo_uid: str | None = Header(None), x_dev_user: str | None = Header(None)
+    ) -> str:
+        # Local stand-in for the Firebase ID token check: the real flow sends the
+        # approver's X-Dev-User (an email); the standalone demo sends X-Demo-Uid.
+        if x_dev_user:
+            return x_dev_user if "@" in x_dev_user else f"{x_dev_user}@acme.example"
+        if x_demo_uid:
+            return x_demo_uid
+        from fastapi import HTTPException
+
+        raise HTTPException(401, "X-Dev-User or X-Demo-Uid header required")
 
     app.dependency_overrides[voice.current_approver_uid] = demo_uid
 
@@ -109,5 +137,6 @@ def wire_voice_demo(app: Any) -> None:
         approvals.reset()
         events.published.clear()
         events.steps.clear()
-        state["service"] = build()
+        store["store"] = InMemoryVoiceStore()
+        state["service"] = None
         return {k: v.approval_id for k, v in approvals.rows.items()}

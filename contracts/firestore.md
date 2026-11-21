@@ -59,7 +59,7 @@ payment status.
 | `initiator` | map | `{ type: "human" \| "agent", id: string }` |
 | `reasons` | array of map | `{ code, text, source, changedFrom?, changedTo? }` |
 | `explanation` | map or null | `{ text, source: "gemini", modelVersion }` |
-| `modelArmorFinding` | map or null | `{ category, detail, excerpt, foundAt }` |
+| `modelArmorFinding` | map or null | `{ category, detail, excerpt, foundAt, screenedBy }`. `screenedBy` is `Google Cloud Model Armor`, or the offline regex stand-in, which says it is not Model Armor |
 | `invoice` | map or null | what Gemini read out of the invoice, beside the vendor master; see below |
 | `policyVersion` | string or null | |
 | `approvers` | array of string | work emails from the approval matrix |

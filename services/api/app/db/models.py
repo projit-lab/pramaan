@@ -218,6 +218,9 @@ class Approval(Base):
     required_level: Mapped[int | None] = mapped_column(Integer)
     escalate_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     escalated_from: Mapped[str | None] = mapped_column(String(40))
+    # Tier 2+: the verified phone signature waits here until the spoken code passes.
+    pending_signature_b64: Mapped[str | None] = mapped_column(Text)
+    pending_summary: Mapped[str | None] = mapped_column(Text)
 
 
 class Mandate(Base):

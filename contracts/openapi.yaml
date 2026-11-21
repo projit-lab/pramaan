@@ -451,8 +451,20 @@ paths:
                     $ref: '#/components/schemas/Decision'
                   mandate_id:
                     type: [string, 'null']
+                    description: Null while a Tier 2+ approval waits for the spoken check
                   verified:
                     type: boolean
+                  status:
+                    type: string
+                    enum: [pending_voice]
+                    description: Present when the signature verified but the mandate waits for the voice step
+                  next:
+                    type: string
+                    enum: [voice]
+                    description: |
+                      Tier 2 and above. Call POST /approvals/{approvalId}/voice (start, then
+                      complete); the mandate is issued when the spoken code matches, and three
+                      wrong tries block the payment.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -1420,6 +1432,78 @@ Glkdpw+Hb5zbgidy1w3GwnA36c5GetJb7YueOmvFWRypc+T4F4eidLGDmw==
                 agent_request_id: ag_01JD2XPOISONED001
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /agent/invoices:
+    post:
+      tags: [intents]
+      summary: Hand an invoice PDF to the payables agent
+      description: |
+        The implemented form of agentPay. Gemini (Vertex AI) reads the invoice's
+        fields; Model Armor screens the document's full text, hidden text included;
+        a rule compares what was read with the vendor master; the agent then asks
+        for a mandate through the same path as every other payment. A finding can
+        only add a reason, raise the tier (a Model Armor finding means Tier 2 or
+        higher) or force individual review. Nothing here releases money.
+        With USE_REAL_AI=false an offline regex reader and screen stand in, and
+        every label says so (source "stub" and "rule", never "gemini" or
+        "model_armor"). Writes holds/{intentId}.invoice, .modelArmorFinding,
+        .explanation and agentRequests/{agentRequestId}.
+      operationId: agentInvoice
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The invoice PDF, up to 5 MB
+      responses:
+        '201':
+          description: The agent's payment request, decided by policy (usually held)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intent_id, agent_request_id, status, tier, reasons, invoice]
+                properties:
+                  intent_id:
+                    type: string
+                  agent_request_id:
+                    type: string
+                  status:
+                    type: string
+                  tier:
+                    type: integer
+                  lane:
+                    type: string
+                  reasons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reason'
+                  invoice:
+                    type: object
+                    additionalProperties: true
+                  model_armor_finding:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  explanation:
+                    type: object
+                    nullable: true
+                    additionalProperties: true
+                  pays_vendor_master_account:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: The PDF is over 5 MB
+        '422':
+          description: Not a PDF, no vendor on record matches, or no total found
+        '503':
+          description: The invoice reader failed; nothing was requested
   /demo/{scenario}:
     post:
       tags: [demo]

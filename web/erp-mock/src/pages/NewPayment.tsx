@@ -14,6 +14,9 @@
 import {
   ErrorState,
   InvalidRupeeInputError,
+  firebaseAuth,
+  getDevUser,
+  readEnv,
   LoadingState,
   api,
   fieldErrors,
@@ -66,7 +69,9 @@ export function NewPayment(): ReactNode {
   const [purpose, setPurpose] = useState('');
   const [channel, setChannel] = useState<Channel>('portal');
   const [note, setNote] = useState('');
-  const [invoice, setInvoice] = useState<{ name: string; sha256: string } | null>(null);
+  const [invoice, setInvoice] = useState<{ name: string; sha256: string; file: File } | null>(
+    null,
+  );
   const [hashing, setHashing] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -126,7 +131,7 @@ export function NewPayment(): ReactNode {
     }
     setHashing(true);
     try {
-      setInvoice({ name: file.name, sha256: await hashFile(file) });
+      setInvoice({ name: file.name, sha256: await hashFile(file), file });
     } catch {
       setBanner('That file could not be read. Try another.');
       setInvoice(null);
@@ -191,15 +196,28 @@ export function NewPayment(): ReactNode {
     setBanner(null);
 
     try {
-      const { data, error, response } = await api().POST('/agent/pay', {
-        body: {
-          invoice_ref: purpose.trim() || invoice.name,
-          ...(vendorId ? { vendor_id: vendorId } : {}),
-        },
+      // Multipart upload, so plain fetch with the same auth the typed client sends.
+      const env = readEnv();
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (env.demoMode) {
+        headers['X-Dev-User'] = getDevUser();
+      } else {
+        const token = await firebaseAuth().currentUser?.getIdToken();
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+      }
+      const form = new FormData();
+      form.append('file', invoice.file, invoice.name);
+      const response = await fetch(`${env.apiBase}/agent/invoices`, {
+        method: 'POST',
+        headers,
+        body: form,
       });
-
-      if (error || !data) {
-        setBanner(problemMessage(toProblem(error, response?.status)));
+      const data = (await response.json().catch(() => ({}))) as {
+        agent_request_id?: string;
+        detail?: string;
+      };
+      if (!response.ok || !data.agent_request_id) {
+        setBanner(data.detail ?? `The agent could not take this invoice (${response.status}).`);
         return;
       }
 
@@ -209,7 +227,7 @@ export function NewPayment(): ReactNode {
     } finally {
       setHandingToAgent(false);
     }
-  }, [invoice, purpose, vendorId, navigate]);
+  }, [invoice, navigate]);
 
   if (vendorsProblem) {
     return (

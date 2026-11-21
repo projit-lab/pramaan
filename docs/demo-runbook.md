@@ -93,6 +93,36 @@ Release each with `gate/release` as above. Tier 2 and 3 payments are never batch
 `GET $api/mandates/<pm_...>` returns the mandate. The public verifier (web/verify) checks
 the KMS countersignature and the phone's signature in the browser, with no Pramaan login.
 
+## 8. Scene: Tier 2 needs your voice too
+
+Delegate **both** `ap.manager` and `controller` to the CFO (Tier 2 routes to the controller):
+
+```
+POST $api/_local/delegations  {"delegate_email":"cfo@acme.example"}  X-Dev-User: controller@acme.example
+```
+
+Raise a Rs 30,00,000 payment to Sri Lakshmi with instruction channel `chat`. Phone: **Load
+pending → Approve** → fingerprint. The server verifies the signature and answers
+`next: "voice"` with no mandate yet; the phone opens the voice screen. Gemini Live (with
+`google-services.json` in `android/app` at build time; otherwise a typed keypad) says the
+payee and amount and asks for the 6-digit code. Say it: the mandate is issued only now. Three
+wrong tries block the payment (`voice_check_failed`).
+
+## 9. Scene: the AI agent is fooled, Pramaan is not
+
+ERP → **New payment** → upload `data/invoices/KAVERI-4471.pdf` → **Let the AI agent pay
+this**. The agent run page shows: the reader followed the hidden line and wants to pay
+`000123458117`; the screen flagged prompt injection; a rule found the account differs from
+the vendor master (`556677885540`). The payment is held at Tier 2 for individual review. In
+the console the invoice panel shows `8117` against `5540` in red. Phone: decline.
+
+Then upload `INV-2219.pdf`: no finding, bank details match, normal hold.
+
+With `USE_REAL_AI=true`, Gemini on Vertex AI reads the invoice, Google Cloud Model Armor
+screens it, and Gemini writes a one-line "why held". With it off, an offline regex reader and
+screen stand in and every label says "stub" or "rule", never Gemini or Model Armor.
+AI only reads, flags and explains; a finding can only raise the tier; only the phone releases.
+
 ## What is real and what is mocked (say this out loud)
 
 | Real | Mocked |
@@ -102,7 +132,7 @@ the KMS countersignature and the phone's signature in the browser, with no Prama
 | Canonical bytes identical on phone and server (14 shared vectors) | Company and vendors (seed data) |
 
 Not yet wired (roadmap): Play Integrity (mandates say `integrity_verdict: NOT_EVALUATED`),
-Cloud Run deployment of the live flow, the four entry doors, the payables agent.
+Cloud Run deployment of the live flow, the four entry doors.
 
 ## If something fails
 

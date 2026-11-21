@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import dev.pramaan.app.voice.GeminiLiveVoiceSession
 import dev.pramaan.app.voice.HttpVoiceStepApi
 import dev.pramaan.app.voice.KeypadVoiceConversation
@@ -40,22 +41,83 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URL
 
+/** What the approver screen hands over after a Tier 2 signature verifies. */
+data class VoiceHandoff(
+    val approvalId: String,
+    val approverEmail: String,
+    val payeeName: String,
+    val amountPaise: String,
+)
+
 /**
- * M4 dev harness: runs the voice step against services/api/dev_main.py for the
- * seeded Tier 2 approval. With a google-services.json the real Gemini Live
- * session is used; without one you type the digits you would have spoken.
+ * The Tier 2 spoken check. Opened by the approver screen when the server answers a
+ * verified signature with `next: "voice"`; the mandate is issued only after the
+ * spoken code matches. Launched on its own it runs the seeded demo approval.
+ * With Firebase config (google-services.json at build time) Gemini Live runs the
+ * conversation; without it you type the digits you would have spoken.
  */
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val hasFirebase = FirebaseApp.initializeApp(this) != null || FirebaseApp.getApps(this).isNotEmpty()
+        val hasFirebase = initFirebase()
+        val handoff = intent?.getStringExtra(EXTRA_APPROVAL_ID)?.let { id ->
+            VoiceHandoff(
+                approvalId = id,
+                approverEmail = intent.getStringExtra(EXTRA_APPROVER) ?: "cfo@acme.example",
+                payeeName = intent.getStringExtra(EXTRA_PAYEE) ?: "the payee",
+                amountPaise = intent.getStringExtra(EXTRA_AMOUNT_PAISE) ?: "0",
+            )
+        }
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    Box(Modifier.safeDrawingPadding()) { Harness(hasFirebase) }
+                    Box(Modifier.safeDrawingPadding()) {
+                        if (handoff != null) {
+                            VoiceHarness(
+                                approvalId = handoff.approvalId,
+                                hasFirebase = hasFirebase,
+                                payeeName = handoff.payeeName,
+                                amountInWords = amountInWords(handoff.amountPaise),
+                                headers = mapOf("X-Dev-User" to handoff.approverEmail),
+                                onDone = { finish() },
+                            )
+                        } else {
+                            Harness(hasFirebase)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun initFirebase(): Boolean {
+        if (FirebaseApp.getApps(this).isNotEmpty()) return true
+        if (FirebaseApp.initializeApp(this) != null) return true
+        if (BuildConfig.FIREBASE_APP_ID.isBlank()) return false
+        val options = FirebaseOptions.Builder()
+            .setApplicationId(BuildConfig.FIREBASE_APP_ID)
+            .setApiKey(BuildConfig.FIREBASE_API_KEY)
+            .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
+            .build()
+        return runCatching { FirebaseApp.initializeApp(this, options) }.isSuccess
+    }
+
+    companion object {
+        const val EXTRA_APPROVAL_ID = "approval_id"
+        const val EXTRA_APPROVER = "approver_email"
+        const val EXTRA_PAYEE = "payee_name"
+        const val EXTRA_AMOUNT_PAISE = "amount_paise"
+    }
+}
+
+/** "thirty lakh rupees" style wording, in digits, for the spoken prompt. */
+fun amountInWords(paise: String): String {
+    val rupees = (paise.toLongOrNull() ?: 0L) / 100
+    fun trim(x: Double) = if (x % 1.0 == 0.0) x.toLong().toString() else "%.2f".format(x).trimEnd('0').trimEnd('.')
+    return when {
+        rupees >= 10_000_000 -> "${trim(rupees / 10_000_000.0)} crore rupees"
+        rupees >= 100_000 -> "${trim(rupees / 100_000.0)} lakh rupees"
+        else -> "$rupees rupees"
     }
 }
 
@@ -80,22 +142,36 @@ private fun Harness(hasFirebase: Boolean) {
             Button(onClick = { round++ }) { Text("Retry") }
         }
         id == null -> Text("Loading approval…", Modifier.padding(24.dp))
-        else -> VoiceHarness(id, hasFirebase, onDone = { round++ })
+        else -> VoiceHarness(
+            approvalId = id,
+            hasFirebase = hasFirebase,
+            payeeName = "Sri Lakshmi Castings",
+            amountInWords = "thirty lakh rupees",
+            headers = mapOf("X-Demo-Uid" to BuildConfig.DEMO_UID),
+            onDone = { round++ },
+        )
     }
 }
 
 @Composable
-private fun VoiceHarness(approvalId: String, hasFirebase: Boolean, onDone: () -> Unit) {
+private fun VoiceHarness(
+    approvalId: String,
+    hasFirebase: Boolean,
+    payeeName: String,
+    amountInWords: String,
+    headers: Map<String, String>,
+    onDone: () -> Unit,
+) {
     val keypad = remember { KeypadVoiceConversation() }
     val conversation: VoiceConversation = remember { if (hasFirebase) GeminiLiveVoiceSession() else keypad }
     val api = remember {
-        HttpVoiceStepApi(BuildConfig.API_BASE) { mapOf("X-Demo-Uid" to BuildConfig.DEMO_UID) }
+        HttpVoiceStepApi(BuildConfig.API_BASE) { headers }
     }
     val vm = viewModel(key = approvalId) {
         VoiceStepViewModel(
             approvalId = approvalId,
-            payeeName = "Sri Lakshmi Castings",
-            amountInWords = "thirty lakh rupees",
+            payeeName = payeeName,
+            amountInWords = amountInWords,
             api = api,
             conversation = conversation,
         )

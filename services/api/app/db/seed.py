@@ -142,7 +142,7 @@ VENDORS = [
         "Kaveri Steel Traders",
         "33AAFCK9921M1Z8",
         18,
-        [("000987655540", "EFGH0005540", "Kaveri Steel Traders", 540)],
+        [("556677885540", "EFGH0005540", "Kaveri Steel Traders", 540)],
     ),
     # The look-alike: a new vendor whose bank details changed three days ago.
     (
