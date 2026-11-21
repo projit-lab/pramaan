@@ -35,16 +35,28 @@ service cloud.firestore {
       return role() == 'clerk';
     }
 
+    // Demo mode: anonymous users can READ holds, devices and payouts in the dev project only.
+    function isDevProject() {
+      return request.auth.token.aud == 'pramaan-dev-515306' ||
+             request.auth.token.aud == 'pramaan-rules-test';
+    }
+
+    function isAnonymousDev() {
+      return signedIn() &&
+        request.auth.token.firebase.sign_in_provider == 'anonymous' &&
+        isDevProject();
+    }
+
     // Held, approved, declined, released, blocked and expired payments.
     // Read by the console holds board and payment detail, and by the mock ERP's
     // live payment status.
     match /holds/{intentId} {
-      allow read: if isFinance() || isClerk();
+      allow read: if isFinance() || isClerk() || isAnonymousDev();
       allow create, update, delete: if false;
 
       // The payment timeline.
       match /steps/{stepId} {
-        allow read: if isFinance() || isClerk();
+        allow read: if isFinance() || isClerk() || isAnonymousDev();
         allow create, update, delete: if false;
       }
     }
@@ -52,7 +64,7 @@ service cloud.firestore {
     // Approver phones. Console only: a clerk has no business seeing which phones
     // can approve, and the mock ERP represents the customer's own system.
     match /devices/{deviceId} {
-      allow read: if isFinance();
+      allow read: if isFinance() || isAnonymousDev();
       allow create, update, delete: if false;
     }
 
@@ -68,7 +80,7 @@ service cloud.firestore {
     // this collection. It reads GET /payouts on the API instead. See the open
     // decision in contracts/firestore.md.
     match /payouts/{payoutId} {
-      allow read: if isFinance() || isClerk();
+      allow read: if isFinance() || isClerk() || isAnonymousDev();
       allow create, update, delete: if false;
     }
 

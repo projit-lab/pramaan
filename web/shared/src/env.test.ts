@@ -38,6 +38,13 @@ describe('readEnv', () => {
     expect(readEnv({ VITE_USE_EMULATORS: 'false', VITE_DEMO_MODE: undefined }).demoMode).toBe(false);
     expect(readEnv({ VITE_USE_EMULATORS: 'false', VITE_DEMO_MODE: 'true' }).demoMode).toBe(true);
   });
+
+  it('gates demo mode strictly on VITE_DEMO_MODE', () => {
+    expect(readEnv({ VITE_DEMO_MODE: undefined }).demoMode).toBe(false);
+    expect(readEnv({ VITE_DEMO_MODE: 'false' }).demoMode).toBe(false);
+    expect(readEnv({ VITE_DEMO_MODE: 'true' }).demoMode).toBe(true);
+    expect(readEnv({ VITE_USE_EMULATORS: 'true', VITE_DEMO_MODE: undefined }).demoMode).toBe(false);
+  });
 });
 
 describe('missingFirebaseConfig', () => {

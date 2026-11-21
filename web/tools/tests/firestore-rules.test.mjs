@@ -184,6 +184,38 @@ describe('nobody signed in', () => {
   });
 });
 
+describe('an anonymous user in demo mode (dev project)', () => {
+  const asAnonDev = () =>
+    testEnv
+      .authenticatedContext('anon-1', {
+        firebase: { sign_in_provider: 'anonymous' },
+      })
+      .firestore();
+
+  it('reads a hold and the board', async () => {
+    await assertSucceeds(getDoc(doc(asAnonDev(), 'holds', INTENT_ID)));
+    await assertSucceeds(getDocs(collection(asAnonDev(), 'holds')));
+  });
+
+  it('reads the payment timeline', async () => {
+    await assertSucceeds(getDocs(collection(asAnonDev(), 'holds', INTENT_ID, 'steps')));
+  });
+
+  it('reads approver phones', async () => {
+    await assertSucceeds(getDoc(doc(asAnonDev(), 'devices', DEVICE_ID)));
+  });
+
+  it('reads payouts', async () => {
+    await assertSucceeds(getDoc(doc(asAnonDev(), 'payouts', PAYOUT_ID)));
+  });
+
+  it('cannot write to holds, devices, or payouts', async () => {
+    await assertFails(setDoc(doc(asAnonDev(), 'holds', 'pi_forged'), { status: 'released' }));
+    await assertFails(setDoc(doc(asAnonDev(), 'devices', 'dv_forged'), { revoked: true }));
+    await assertFails(setDoc(doc(asAnonDev(), 'payouts', 'po_forged'), { status: 'paid' }));
+  });
+});
+
 describe('no client writes, at any role', () => {
   it('refuses a finance user creating a hold', async () => {
     await assertFails(

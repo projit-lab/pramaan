@@ -19,8 +19,10 @@
 
 import { Icon } from '@pramaan/shared/components/Icon';
 import { AmountBlock } from '@pramaan/shared/components/Money';
+import { DemoModeChip } from '@pramaan/shared/components/Badges';
 import { PramaanLockup } from '@pramaan/shared/components/PramaanMark';
 import { StateBand } from '@pramaan/shared/components/StateBand';
+import { readEnv } from '@pramaan/shared/env';
 import { type ReactNode, useCallback, useState } from 'react';
 import { type MandateInput, type VerificationResult, verifyMandate } from './crypto';
 
@@ -118,7 +120,10 @@ export function App(): ReactNode {
     <div>
       <header className="pm-page" style={{ paddingBottom: 0 }}>
         <div className="pm-spread">
-          <PramaanLockup size={26} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PramaanLockup size={26} />
+            {readEnv().demoMode ? <DemoModeChip /> : null}
+          </div>
           <span className="pm-chip">
             <Icon name="public" size="sm" />
             Public verifier

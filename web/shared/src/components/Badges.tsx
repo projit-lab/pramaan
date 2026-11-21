@@ -197,3 +197,22 @@ export function RouteBadge({ route }: { route: EntryRoute | null | undefined }):
     </span>
   );
 }
+
+/** Small header indicator shown when VITE_DEMO_MODE is true. */
+export function DemoModeChip(): ReactNode {
+  return (
+    <span
+      className="pm-chip pm-chip--expired"
+      style={{
+        padding: '2px 8px',
+        fontSize: '11px',
+        lineHeight: '16px',
+        fontWeight: 500,
+        letterSpacing: '0.3px',
+      }}
+      data-testid="demo-mode-chip"
+    >
+      Demo mode
+    </span>
+  );
+}
