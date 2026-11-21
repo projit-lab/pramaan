@@ -12,7 +12,7 @@
  * The clerk can never approve. That is not a missing feature; it is the point.
  */
 
-import { PramaanMark, RoleGate, useAuth } from '@pramaan/shared';
+import { DemoModeChip, PramaanMark, RoleGate, readEnv, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { AgentRun } from './pages/AgentRun';
@@ -25,6 +25,7 @@ import { Vendors } from './pages/Vendors';
 
 function ErpShell({ children }: { children: ReactNode }): ReactNode {
   const { user, signOut } = useAuth();
+  const env = readEnv();
 
   return (
     <div className="erp-shell">
@@ -56,10 +57,13 @@ function ErpShell({ children }: { children: ReactNode }): ReactNode {
           <span style={{ fontSize: 12, color: '#5A6169' }}>
             Acme Auto Components Pvt Ltd &middot; Accounts payable
           </span>
-          <span className="pm-protected">
-            <PramaanMark size={18} />
-            Protected by Pramaan
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {env.demoMode ? <DemoModeChip /> : null}
+            <span className="pm-protected">
+              <PramaanMark size={18} />
+              Protected by Pramaan
+            </span>
+          </div>
         </div>
         {children}
       </main>

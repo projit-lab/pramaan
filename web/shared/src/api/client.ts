@@ -21,8 +21,20 @@ export type { PramaanClient } from './public';
 export { publicApi } from './public';
 export { type Problem, fieldErrors, problemMessage, toProblem } from './problem';
 
+let currentDevUser: string = 'clerk';
+
+/** Set the short user name sent in X-Dev-User during demo mode ('clerk' or 'cfo'). */
+export function setDevUser(user: string): void {
+  currentDevUser = user;
+}
+
+export function getDevUser(): string {
+  return currentDevUser;
+}
+
 /**
- * Attaches a fresh Firebase ID token to every request.
+ * Attaches a fresh Firebase ID token to every request, or in demo mode sends
+ * X-Dev-User instead of the Bearer token.
  *
  * Requests to endpoints that carry `security: []` in the contract work without a
  * token too: when nobody is signed in, no header is added and the request goes
@@ -30,6 +42,11 @@ export { type Problem, fieldErrors, problemMessage, toProblem } from './problem'
  */
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
+    if (readEnv().demoMode) {
+      request.headers.set('X-Dev-User', getDevUser());
+      request.headers.delete('Authorization');
+      return request;
+    }
     const user = firebaseAuth().currentUser;
     if (!user) return request;
     try {

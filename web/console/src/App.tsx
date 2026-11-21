@@ -1,4 +1,4 @@
-import { Icon, PramaanLockup, useAuth } from '@pramaan/shared';
+import { DemoModeChip, Icon, PramaanLockup, readEnv, useAuth } from '@pramaan/shared';
 import type { ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { Devices } from './pages/Devices';
@@ -17,12 +17,14 @@ import { PaymentDetail } from './pages/PaymentDetail';
  */
 export function App(): ReactNode {
   const { user, signOut } = useAuth();
+  const env = readEnv();
 
   return (
     <div className="pm-shell">
       <nav className="pm-side" aria-label="Console sections">
-        <div className="pm-side__brand" style={{ padding: '8px 12px 16px' }}>
+        <div className="pm-side__brand" style={{ padding: '8px 12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <PramaanLockup size={28} />
+          {env.demoMode ? <DemoModeChip /> : null}
         </div>
 
         {/* NavLink sets aria-current="page" itself, which is what the active

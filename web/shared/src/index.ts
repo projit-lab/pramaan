@@ -41,9 +41,11 @@ export {
   type Problem,
   api,
   fieldErrors,
+  getDevUser,
   problemMessage,
   publicApi,
   resetApiForTests,
+  setDevUser,
   toProblem,
 } from './api/client';
 
@@ -129,6 +131,7 @@ export {
 export {
   AiLabel,
   ChannelBadge,
+  DemoModeChip,
   ModelArmorBadge,
   ReasonSourceTag,
   RouteBadge,

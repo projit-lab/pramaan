@@ -10,6 +10,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { readEnv } from '../env';
 import { type Role, useAuth } from './AuthProvider';
 import { NoAccess } from './NoAccess';
 import { SignIn } from './SignIn';
@@ -31,7 +32,13 @@ export function RoleGate({
   appDescription,
   children,
 }: RoleGateProps): ReactNode {
+  const env = readEnv();
   const { status, role, user, signOut } = useAuth();
+
+  // In demo mode: skip sign-in completely and let reviewers straight through
+  if (env.demoMode) {
+    return <>{children}</>;
+  }
 
   if (status === 'loading') {
     return <LoadingState label="Checking your sign-in" />;

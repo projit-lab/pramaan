@@ -11,6 +11,7 @@ import {
   GoogleAuthProvider,
   type User,
   onIdTokenChanged,
+  signInAnonymously,
   signInWithPopup,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
@@ -23,6 +24,8 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { setDevUser } from '../api/client';
+import { readEnv } from '../env';
 import { firebaseAuth } from '../firebase/app';
 
 /** The roles the web lane knows. `finance` reads the console, `clerk` the ERP. */
@@ -43,6 +46,14 @@ export interface AuthState {
   idToken: () => Promise<string | null>;
 }
 
+export interface AuthProviderProps {
+  children: ReactNode;
+  /** Role granted when demoMode is true. Defaults to 'finance'. */
+  demoRole?: Role;
+  /** Short user name sent in X-Dev-User when demoMode is true ('clerk' or 'cfo'). */
+  demoUser?: string;
+}
+
 const AuthContext = createContext<AuthState | null>(null);
 
 function readRole(claims: Record<string, unknown>): Role | null {
@@ -50,13 +61,55 @@ function readRole(claims: Record<string, unknown>): Role | null {
   return value === 'finance' || value === 'clerk' ? value : null;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
-  const [status, setStatus] = useState<AuthStatus>('loading');
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<Role | null>(null);
+export function AuthProvider({
+  children,
+  demoRole,
+  demoUser,
+}: AuthProviderProps): ReactNode {
+  const env = readEnv();
+  const effectiveRole: Role = demoRole ?? 'finance';
+  const effectiveUser = demoUser ?? (effectiveRole === 'clerk' ? 'clerk' : 'cfo');
+
+  if (env.demoMode) {
+    setDevUser(effectiveUser);
+  }
+
+  const makeStandInUser = (fbUser?: User | null): User =>
+    ({
+      ...(fbUser ?? {}),
+      uid: fbUser?.uid ?? effectiveUser,
+      email: fbUser?.email ?? `${effectiveUser}@acme.example`,
+      isAnonymous: true,
+      getIdToken: () => fbUser?.getIdToken() ?? Promise.resolve(''),
+      getIdTokenResult: () =>
+        fbUser?.getIdTokenResult() ??
+        Promise.resolve({ claims: { role: effectiveRole } }),
+    } as unknown as User);
+
+  const [status, setStatus] = useState<AuthStatus>(env.demoMode ? 'signed-in' : 'loading');
+  const [user, setUser] = useState<User | null>(env.demoMode ? makeStandInUser(null) : null);
+  const [role, setRole] = useState<Role | null>(env.demoMode ? effectiveRole : null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (env.demoMode) {
+      // In demo mode: sign in anonymously so Firestore security rules accept the live reads,
+      // but do not wait for it or block the UI.
+      const auth = firebaseAuth();
+      if (!auth.currentUser) {
+        signInAnonymously(auth)
+          .then((cred) => {
+            setUser(makeStandInUser(cred.user));
+          })
+          .catch(() => {
+            // Stand-in user remains active
+          });
+      } else {
+        setUser(makeStandInUser(auth.currentUser));
+      }
+      return;
+    }
+
     // onIdTokenChanged rather than onAuthStateChanged, so a role granted while the
     // tab is open takes effect on the next token refresh instead of needing a
     // reload.
@@ -78,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       setStatus('signed-in');
     });
     return unsubscribe;
-  }, []);
+  }, [env.demoMode, effectiveRole, effectiveUser]);
 
   const signIn = useCallback(async () => {
     setError(null);

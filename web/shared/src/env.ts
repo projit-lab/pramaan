@@ -87,7 +87,7 @@ export function readEnv(overrides: RawEnv = {}): PramaanEnv {
   return {
     useEmulators,
     apiBase: text(raw, 'VITE_API_BASE', 'http://127.0.0.1:4010').replace(/\/+$/, ''),
-    demoMode: flag(raw, 'VITE_DEMO_MODE', useEmulators),
+    demoMode: flag(raw, 'VITE_DEMO_MODE', false),
     payoutsSource,
     verifyBase: text(raw, 'VITE_VERIFY_BASE', 'http://localhost:5175').replace(/\/+$/, ''),
     firebase: {
