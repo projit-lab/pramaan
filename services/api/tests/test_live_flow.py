@@ -490,3 +490,26 @@ def test_decline_blocks(tmp_path: Path) -> None:
 
     blocked = [e for e in rt.event_bus.events if e["event_type"] == "payment.blocked"]
     assert any(b["data"]["reason"] == "declined_by_approver" for b in blocked)
+
+
+def test_new_intent_writes_the_console_hold_document(tmp_path: Path) -> None:
+    client, rt, _ = make_test_env(tmp_path)
+    resp = client.post(
+        "/v1/intents",
+        headers={"X-Dev-User": "clerk"},
+        json={
+            "payee_vendor_id": "vd_sri_lakshmi",
+            "amount_paise": "20000000",
+            "purpose": "INV-2219",
+            "instruction_channel": "chat",
+            "entry_route": "erp",
+            "initiator": {"type": "human", "id": "clerk@acme.example"},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    hold = rt.read_model.get_document("holds", resp.json()["intent_id"])
+    assert hold is not None
+    assert hold["status"] == "held"
+    assert hold["payeeNameAtBank"]
+    assert hold["entryRoute"] == "erp"
+    assert hold["lane"] == "individual_review"
