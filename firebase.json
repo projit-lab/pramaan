@@ -48,6 +48,11 @@
           "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
         }
       ]
+    },
+    {
+      "target": "landing",
+      "public": "web/landing",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
     }
   ],
   "firestore": {

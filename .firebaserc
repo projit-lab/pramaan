@@ -1,15 +1,25 @@
 {
-  "_comment": "Shared file: needs Prajit's review. Project id taken from infra/bootstrap.ps1, which creates pramaan-dev-515306 in asia-south1. The three hosting sites must exist before a deploy: firebase hosting:sites:create <id>",
   "projects": {
     "default": "pramaan-dev-515306"
   },
   "targets": {
     "pramaan-dev-515306": {
       "hosting": {
-        "console": ["pramaan-dev-515306-console"],
-        "erp": ["pramaan-dev-515306-erp"],
-        "verify": ["pramaan-dev-515306-verify"]
+        "console": [
+          "pramaan-dev-515306-console"
+        ],
+        "erp": [
+          "pramaan-dev-515306-erp"
+        ],
+        "verify": [
+          "pramaan-dev-515306-verify"
+        ],
+        "landing": [
+          "pramaan-start"
+        ]
       }
     }
-  }
+  },
+  "etags": {},
+  "_comment": "Shared file: needs Prajit's review. Project id taken from infra/bootstrap.ps1, which creates pramaan-dev-515306 in asia-south1. The three hosting sites must exist before a deploy: firebase hosting:sites:create <id>"
 }

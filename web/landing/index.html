@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pramaan: start here</title>
+<meta name="description" content="Pramaan holds risky company payments until the real approver signs that exact payment on their phone.">
+<style>
+  :root{--bg:#0b1220;--card:#121c2f;--line:#22304a;--text:#e8eefc;--muted:#9fb0cf;--accent:#f5a524;--blue:#6ea8ff;--ok:#3ecf8e;--bad:#ff6b6b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 16px 64px}
+  .tag{display:inline-block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);border:1px solid #5a4314;border-radius:999px;padding:4px 10px}
+  h1{font-size:clamp(32px,6vw,52px);line-height:1.08;margin:16px 0 8px}
+  .lead{font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:720px;margin:0}
+  .lead b{color:var(--text)}
+  h2{font-size:22px;margin:36px 0 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  a.btn{display:block;text-decoration:none;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  a.btn:hover{border-color:var(--blue)}
+  a.btn b{display:block;font-size:17px;margin-bottom:4px}
+  a.btn span{color:var(--muted);font-size:14px}
+  a.btn.primary{border-color:var(--accent)}
+  ol{padding-left:22px;margin:0}
+  ol li{margin:10px 0}
+  code{background:#0e1729;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:14px;word-break:break-all}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600}
+  .ok{color:var(--ok)} .bad{color:var(--bad)}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:14px}
+  .flow span.s{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:var(--text)}
+  footer{margin-top:40px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">Working prototype · Startup Buildathon India 2026</span>
+  <h1>Pramaan: the signature AI can't fake.</h1>
+  <p class="lead">AI can fake a face, a voice, an invoice, even an approval click. Pramaan holds every risky company payment until <b>the real approver signs that exact payment</b> with a fingerprint, using a key sealed in their phone's secure chip. <b>No signature, no payment.</b></p>
+
+
+  <div class="flow" style="margin-top:28px">
+    <span class="s">Payment created</span>→<span class="s">Held by policy</span>→<span class="s">Approver signs on phone (StrongBox)</span>→<span class="s">Cloud KMS countersigns mandate</span>→<span class="s">Gate releases, only if nothing changed</span>
+  </div>
+
+  <h2>Open the prototype</h2>
+  <div class="grid">
+    <a class="btn primary" href="https://pramaan-dev-515306-erp.web.app" target="_blank" rel="noopener"><b>1 · Acme ERP</b><span>Create a payment and watch Pramaan hold it.</span></a>
+    <a class="btn" href="https://pramaan-dev-515306-console.web.app" target="_blank" rel="noopener"><b>2 · Pramaan console</b><span>Live holds board: tier, reasons, which door it came through.</span></a>
+    <a class="btn" href="https://pramaan-dev-515306-verify.web.app" target="_blank" rel="noopener"><b>3 · Public verifier</b><span>Check any mandate's signatures in your own browser.</span></a>
+    <a class="btn" href="https://pramaan-api-289386614813.asia-south1.run.app/docs" target="_blank" rel="noopener"><b>4 · Live API</b><span>Every endpoint, on Cloud Run. Try them.</span></a>
+  </div>
+
+  <h2>Try it in 2 minutes (no sign-in)</h2>
+  <div class="card">
+    <ol>
+      <li><b>Create a payment</b> in the ERP (New payment). Pramaan scores it and <b>holds</b> it.</li>
+      <li><b>Watch it arrive</b> on the console, marked "From the ERP". A bank file upload in the ERP arrives the same way, marked "From a bank file".</li>
+      <li><b>Approval only happens on the approver's phone</b>: a fingerprint over the exact payee, account and amount. The demo video shows it; the console already holds examples we approved on a Pixel 10a: one released, one <span class="bad">tampered and refused</span>, and a batch signed with one fingerprint.</li>
+      <li><b>Verify a mandate yourself</b>: open the verifier and paste <code>MANDATE_ID</code>. Your browser checks the Cloud KMS countersignature and the phone's signature, with no trust in us.</li>
+      <li><b>Hack us</b>: in the ERP admin panel, change the account number of an approved payment and press release. <span class="ok">The gate refuses</span>, because the payment no longer matches what was signed.</li>
+    </ol>
+  </div>
+
+  <h2>What's real, what's mocked</h2>
+  <div class="card">
+    <table>
+      <tr><th>Real</th><th>Mocked for the demo</th></tr>
+      <tr><td>Hardware key in the phone's StrongBox, fingerprint on every signature</td><td>The ERP (Acme ERP)</td></tr>
+      <tr><td>11 attestation checks against Google's hardware attestation root</td><td>The bank (sandbox payouts)</td></tr>
+      <tr><td>Cloud KMS HSM countersignature, single-use payment gate, tamper check</td><td>The company and its vendors</td></tr>
+      <tr><td>Signed batches, policy tiers and approver hierarchy, Firestore live console, Cloud Run, Gemini Live voice step</td><td>Demo sandbox: no sign-in, one instance</td></tr>
+    </table>
+  </div>
+
+  <h2>Why it matters</h2>
+  <p class="lead">In 2024 a finance employee sent about $25 million after a video call where his CFO and colleagues were all deepfakes. Businesses have reported over $61 billion lost to business email compromise since 2013 (FBI IC3). Every one of those payments was approved by someone who believed it was real.</p>
+
+  <footer>Built on Google Cloud: Cloud Run, Cloud KMS (HSM), Firestore, Firebase Hosting, Android Keystore with key attestation, Gemini. Roadmap: Play Integrity, AI payables agent, bank-side verification.</footer>
+</div>
+</body>
+</html>
