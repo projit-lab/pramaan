@@ -361,3 +361,40 @@ class Policy(Base):
     document: Mapped[dict[str, Any]] = mapped_column(JsonType)
     active: Mapped[bool] = mapped_column(Boolean, default=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BankFile(Base):
+    """A payment file uploaded the way finance would hand one to their bank.
+
+    The second of the four doors. Every line becomes an ordinary payment intent
+    and meets exactly the same gate, which is the point: a file gets no more
+    trust than a person typing. The file row exists so a clerk can be told
+    honestly that their file is not finished while any line in it is still
+    waiting for an approver.
+    """
+
+    __tablename__ = "bank_files"
+
+    file_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.company_id"), index=True)
+    filename: Mapped[str] = mapped_column(String(260))
+    #: Of the exact bytes uploaded, so the file Pramaan read is provably the file sent.
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(254))
+    line_count: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BankFileLine(Base):
+    """Which line of which file became which payment.
+
+    The line's state is never stored: it is the intent's state. Two copies of
+    "is this decided yet" is two chances to disagree, and the intent is the one
+    the gate actually reads.
+    """
+
+    __tablename__ = "bank_file_lines"
+
+    file_id: Mapped[str] = mapped_column(ForeignKey("bank_files.file_id"), primary_key=True)
+    line_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    intent_id: Mapped[str] = mapped_column(ForeignKey("payment_intents.intent_id"), index=True)

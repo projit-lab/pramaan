@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.adapters.voice_demo import wire_voice_demo
 from app.config import get_settings
 from app.errors import (
     ProblemException,
@@ -13,12 +14,12 @@ from app.errors import (
     problem_exception_handler,
     validation_exception_handler,
 )
-from app.adapters.voice_demo import wire_voice_demo
 from app.logging import setup_logging
 from app.routers import (
     approvals,
     batches,
     devices,
+    files,
     gate,
     health,
     hierarchy,
@@ -77,7 +78,7 @@ def create_app() -> FastAPI:
     # M2 (Danish): intents, approvals list, mandates, vendor master, policies.
     # M2+ (Danish): organisation tree, approver hierarchy, batches, standing mandates.
     # M1 & M2 (Prajit): devices enrolment, approvals decision, payment gate release.
-    for module in (intents, approvals, batches, mandates, master, hierarchy, devices, gate):
+    for module in (intents, approvals, batches, mandates, master, hierarchy, files, devices, gate):
         app.include_router(module.router, prefix="/v1")
 
     # M4 (Danish, ported into this layout by Shoaib): the Tier 2 spoken check.
