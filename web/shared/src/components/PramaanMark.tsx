@@ -41,8 +41,8 @@ export function PramaanMark({ size = 32 }: { size?: number }): ReactNode {
 }
 
 /** The mark with the wordmark beside it, in live text. */
-export function PramaanLockup({ size = 32 }: { size?: number }): ReactNode {
-  return (
+export function PramaanLockup({ size = 32, href }: { size?: number; href?: string }): ReactNode {
+  const content = (
     <span
       style={{
         display: 'inline-flex',
@@ -64,4 +64,23 @@ export function PramaanLockup({ size = 32 }: { size?: number }): ReactNode {
       </span>
     </span>
   );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        className="pm-lockup-link"
+        style={{
+          textDecoration: 'none',
+          display: 'inline-flex',
+          borderRadius: 'var(--radius-sm)',
+        }}
+        aria-label="Pramaan home"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return content;
 }

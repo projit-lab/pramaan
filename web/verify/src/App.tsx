@@ -118,13 +118,13 @@ export function App(): ReactNode {
 
   return (
     <div>
-      <header className="pm-page" style={{ paddingBottom: 0 }}>
+      <header className="pm-page pm-page--narrow" style={{ paddingBottom: 0 }}>
         <div className="pm-spread">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <PramaanLockup size={26} />
+            <PramaanLockup size={26} href="/" />
             {readEnv().demoMode ? <DemoModeChip /> : null}
           </div>
-          <span className="pm-chip">
+          <span className="pm-chip" style={{ cursor: 'default', userSelect: 'none' }}>
             <Icon name="public" size="sm" />
             Public verifier
           </span>

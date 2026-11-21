@@ -60,10 +60,13 @@
 .pm-reason { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--neutral-soft); color: var(--ink); font-size: 13px; line-height: 18px; }
 .pm-reason b { font-family: var(--font-mono); font-weight: 400; font-size: 12px; color: var(--ink-muted); }
 
-/* Cards: tinted, no border, big radius */
-.pm-card { background: var(--surface-container); border-radius: var(--radius-lg); padding: var(--space-6); }
-.pm-card--raised { background: var(--surface); box-shadow: var(--shadow-card); }
+/* Cards: tinted, clear edge, soft shadow, big radius */
+.pm-card { background: var(--surface-container); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: var(--shadow-card); }
+.pm-card--raised { background: var(--surface); box-shadow: var(--shadow-pop); }
 .pm-card--tight { padding: var(--space-4); }
+
+.pm-lockup-link { text-decoration: none; display: inline-flex; border-radius: var(--radius-sm); }
+.pm-lockup-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 /* Avatar: payee initial in a circle */
 .pm-avatar { width: 56px; height: 56px; border-radius: var(--radius-pill); background: var(--primary-container); color: var(--on-primary-container); display: inline-flex; align-items: center; justify-content: center; font: 500 24px/1 var(--font-display); flex: none; }
