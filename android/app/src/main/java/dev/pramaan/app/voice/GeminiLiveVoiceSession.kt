@@ -87,8 +87,8 @@ class GeminiLiveVoiceSession(
         )
 
     companion object {
-        const val MODEL = "gemini-3.8-live"
-        const val LOCATION = "asia-south1"
+        const val MODEL = "gemini-live-2.5-flash-native-audio"
+        const val LOCATION = "us-central1" // Live models are not served from asia-south1 or global
         const val VOICE_NAME = "Kore"
         const val FUNCTION_NAME = "submit_spoken_code"
 

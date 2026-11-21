@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import dev.pramaan.app.voice.GeminiLiveVoiceSession
 import dev.pramaan.app.voice.HttpVoiceStepApi
 import dev.pramaan.app.voice.KeypadVoiceConversation
@@ -91,15 +93,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initFirebase(): Boolean {
-        if (FirebaseApp.getApps(this).isNotEmpty()) return true
-        if (FirebaseApp.initializeApp(this) != null) return true
-        if (BuildConfig.FIREBASE_APP_ID.isBlank()) return false
-        val options = FirebaseOptions.Builder()
-            .setApplicationId(BuildConfig.FIREBASE_APP_ID)
-            .setApiKey(BuildConfig.FIREBASE_API_KEY)
-            .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
-            .build()
-        return runCatching { FirebaseApp.initializeApp(this, options) }.isSuccess
+        val ok = when {
+            FirebaseApp.getApps(this).isNotEmpty() -> true
+            FirebaseApp.initializeApp(this) != null -> true
+            BuildConfig.FIREBASE_APP_ID.isBlank() -> false
+            else -> runCatching {
+                val options = FirebaseOptions.Builder()
+                    .setApplicationId(BuildConfig.FIREBASE_APP_ID)
+                    .setApiKey(BuildConfig.FIREBASE_API_KEY)
+                    .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
+                    .build()
+                FirebaseApp.initializeApp(this, options)
+            }.isSuccess
+        }
+        if (ok) {
+            // Firebase AI Logic enforces App Check. A sideloaded demo build uses the debug
+            // provider: it logs a token (tag DebugAppCheckProvider) that is registered once
+            // in the Firebase console. A store build would use Play Integrity instead.
+            FirebaseAppCheck.getInstance()
+                .installAppCheckProviderFactory(DebugAppCheckProviderFactory.getInstance())
+        }
+        return ok
     }
 
     companion object {

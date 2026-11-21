@@ -77,7 +77,11 @@ class VoiceStepViewModel(
             } catch (p: VoiceStepProblem) {
                 if (p.slug == "voice-finished") fallback() else _state.value = VoiceUiState.Error(p.message)
             } catch (e: Exception) {
-                _state.value = VoiceUiState.Error("Could not start the spoken check. Check your connection.")
+                android.util.Log.e("PramaanVoice", "start failed", e)
+                _state.value = VoiceUiState.Error(
+                    "Could not start the spoken check. Check your connection. " +
+                        "(${e.javaClass.simpleName}: ${e.message?.take(160)})",
+                )
             }
         }
     }
