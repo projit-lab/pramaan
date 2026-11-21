@@ -1,7 +1,7 @@
 package dev.pramaan.app
 
 import android.os.Bundle
-import androidx.fragment.app.FragmentActivity
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,7 +56,7 @@ data class VoiceHandoff(
  * With Firebase config (google-services.json at build time) Gemini Live runs the
  * conversation; without it you type the digits you would have spoken.
  */
-class MainActivity : FragmentActivity() {
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val hasFirebase = initFirebase()
