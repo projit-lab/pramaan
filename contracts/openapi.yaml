@@ -20,7 +20,7 @@ info:
       - Money is an integer number of paise, sent as a string. Rupees 46.5 lakh is "465000000".
       - Time is ISO 8601 with the +05:30 offset.
       - IDs are prefixed ULIDs: pi_ intent, ap_ approval, pm_ mandate, dv_ device,
-        vd_ vendor, ag_ agent request, po_ payout.
+        vd_ vendor, ag_ agent request, po_ payout, vs_ voice session.
       - Errors are problem details (RFC 9457).
       - Account numbers are masked to the last four digits everywhere except the
         canonical summary the approver signs.
@@ -471,7 +471,24 @@ paths:
     post:
       tags: [approvals]
       summary: Start and complete the Tier 2 spoken check
-      description: Stub. Prajit owns Gemini Live voice. Lands in M4.
+      description: |
+        Called by the Android app only. Lands in M4 (Danish; Prajit approves the
+        server pieces).
+
+        Runs only after the Tier 1 signature on this approval has been verified,
+        and only at tier 2 and above. It adds a check after the signature; it
+        never replaces it. It is a deliberate confirmation through a second
+        channel, not voice identification.
+
+        `start` issues a six-digit one-time code bound to this approval and its
+        nonce, valid for two minutes and usable once. The app shows it, and the
+        approver speaks it to Gemini Live, which can call only
+        `submit_spoken_code(digits)`. `complete` sends the digits the approver
+        confirmed on screen. Only an exact match passes. Three wrong tries end
+        the step and fall back to a call-back; a new code never resets the
+        count, and at most three codes are issued per approval.
+
+        No audio is sent or stored. The ledger keeps only the result and a hash.
       operationId: approvalVoice
       parameters:
         - $ref: '#/components/parameters/ApprovalId'
@@ -480,23 +497,81 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Owned by Prajit.
-              additionalProperties: true
+              oneOf:
+                - $ref: '#/components/schemas/VoiceStart'
+                - $ref: '#/components/schemas/VoiceComplete'
+              discriminator:
+                propertyName: action
+                mapping:
+                  start: '#/components/schemas/VoiceStart'
+                  complete: '#/components/schemas/VoiceComplete'
+            examples:
+              start:
+                summary: Ask for a code, in Tamil
+                value:
+                  action: start
+                  language: ta
+              complete:
+                summary: Send the digits the approver confirmed
+                value:
+                  action: complete
+                  voice_id: vs_01JD2XVOICE00001
+                  digits: "482913"
       responses:
         '200':
-          description: The spoken check result
+          description: The state of the spoken check
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  matched:
-                    type: boolean
-                  attempts_remaining:
-                    type: integer
+                $ref: '#/components/schemas/VoiceStepState'
+              examples:
+                started:
+                  summary: Code issued; the app shows it
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: awaiting_code
+                    matched: false
+                    attempts_remaining: 3
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
+                    code: "482913"
+                passed:
+                  summary: Exact match
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: passed
+                    matched: true
+                    attempts_remaining: 3
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
+                fallback:
+                  summary: Three wrong tries; finance calls the approver back
+                  value:
+                    approval_id: ap_01JD2XBOSSSCAM0001
+                    voice_id: vs_01JD2XVOICE00001
+                    status: fallback_callback
+                    matched: false
+                    attempts_remaining: 0
+                    language: ta
+                    expires_at: "2026-11-21T14:14:07+05:30"
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The Tier 1 signature is not verified yet, the tier is below 2, the
+            step has already passed or fallen back, or there is no active code.
+            The problem `type` ends in tier1-not-verified, tier-too-low,
+            voice-finished or no-active-code.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
   /gate/release:
     post:
       tags: [gate]
@@ -729,6 +804,268 @@ Glkdpw+Hb5zbgidy1w3GwnA36c5GetJb7YueOmvFWRypc+T4F4eidLGDmw==
                 additionalProperties: true
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /org/tree:
+    get:
+      tags: [policies]
+      summary: The organisation tree with each node's rules
+      description: |
+        PROPOSAL (Danish, M2+), needs Prajit's and Shoaib's approval. Read by the
+        policy editor tree. inherited_rule_codes are shown greyed.
+      operationId: getOrgTree
+      responses:
+        '200':
+          description: Every node, root first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nodes]
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrgNode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /org/nodes/{nodeId}:
+    put:
+      tags: [policies]
+      summary: Create or replace one node's settings and rules
+      description: |
+        PROPOSAL (Danish, M2+). Rejected with 422 when the change would loosen
+        anything the node inherits (a higher threshold, wider working hours,
+        switching off or weakening a parent's rule); `errors` says why.
+      operationId: putOrgNode
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^org_[A-Za-z0-9_]+$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_id: {type: [string, 'null']}
+                kind: {type: [string, 'null'], enum: [group, company, plant, department, null]}
+                name: {type: [string, 'null']}
+                settings: {$ref: '#/components/schemas/OrgSettings'}
+                rules:
+                  type: array
+                  items: {$ref: '#/components/schemas/OrgRule'}
+      responses:
+        '200':
+          description: The whole tree after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items: {$ref: '#/components/schemas/OrgNode'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /approvers:
+    get:
+      tags: [approvals]
+      summary: The approver hierarchy
+      description: PROPOSAL (Danish, M2+). Read by the approver hierarchy screen.
+      operationId: listApprovers
+      responses:
+        '200':
+          description: Approvers, most senior first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvers]
+                properties:
+                  approvers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        email: {type: string}
+                        display_name: {type: string}
+                        role: {type: string}
+                        level: {type: [integer, 'null'], description: "1 AP Manager, 2 Controller, 3 CFO, 4 MD"}
+                        level_name: {type: [string, 'null']}
+                        node_id: {type: [string, 'null']}
+                        active: {type: boolean}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /batches:
+    get:
+      tags: [approvals]
+      summary: The caller's batches, each signed with one fingerprint
+      description: |
+        PROPOSAL (Danish, M2+). Read by the app's batch review screen and the
+        console's batch view. The signed batch format is Prajit's.
+      operationId: listBatches
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: {type: string, enum: [pending, decided, expired]}
+      responses:
+        '200':
+          description: Batches with their lines
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items: {$ref: '#/components/schemas/BatchSummary'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /batches/{batchId}:
+    get:
+      tags: [approvals]
+      summary: One batch to sign, with its lines and the canonical batch summary
+      description: |
+        Prajit's signed batch format. The phone signs the bytes of canonical_b64 with one
+        fingerprint. summary_fields = {kind: "batch", batch_id, approver, line_count,
+        total_paise, lines_sha256, nonce, expires_at, window_at, v: "1"}. Each line hash is
+        the SHA-256 (hex) of that payment's canonical summary (the same fields an individual
+        approval signs, with the batch's nonce and expires_at); lines_sha256 is the SHA-256 of
+        the line hashes sorted by intent_id and joined with "\n". Tier 2 and 3 payments are
+        never batched (422).
+      operationId: getBatch
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string, pattern: '^bt_[A-Za-z0-9]+$'}}
+      responses:
+        '200':
+          description: The batch, its lines and the bytes to sign
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batch_id, status, line_count, total_paise, lines, summary_fields, canonical_b64]
+                properties:
+                  batch_id: {type: string}
+                  status: {type: string}
+                  window_at: {type: string}
+                  expires_at: {type: string}
+                  line_count: {type: integer}
+                  total_paise: {type: string}
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        intent_id: {type: string}
+                        payee_name: {type: string}
+                        payee_account_last4: {type: string}
+                        payee_ifsc: {type: string}
+                        amount_paise: {type: string}
+                        purpose: {type: string}
+                        tier: {type: integer}
+                  summary_fields: {type: object, additionalProperties: {type: string}}
+                  canonical_b64: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /batches/{batchId}/decision:
+    post:
+      tags: [approvals]
+      summary: Approve or decline a whole batch with one device signature
+      description: |
+        The server rebuilds the batch summary from the stored payments and verifies the
+        signature with the caller's enrolled device key. Approve issues one KMS-countersigned
+        mandate per line; each mandate's summary_b64 is the signed batch summary, and the gate
+        releases a line only if the payment as it is now hashes to one of the batch's line
+        hashes. Single use.
+      operationId: decideBatch
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string, pattern: '^bt_[A-Za-z0-9]+$'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision, signature]
+              properties:
+                decision: {type: string, enum: [approve, decline]}
+                signature: {type: string, description: DER ECDSA P-256 signature, base64}
+      responses:
+        '200':
+          description: Decided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batch_id: {type: string}
+                  decision: {type: string}
+                  verified: {type: boolean}
+                  line_count: {type: integer}
+                  mandates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        intent_id: {type: string}
+                        mandate_id: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /standing-mandates:
+    get:
+      tags: [mandates]
+      summary: Standing mandates with this month's usage against their limits
+      description: PROPOSAL (Danish, M2+). Creating one needs Prajit's signed format.
+      operationId: listStandingMandates
+      responses:
+        '200':
+          description: Standing mandates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [standing_mandates]
+                properties:
+                  standing_mandates:
+                    type: array
+                    items: {$ref: '#/components/schemas/StandingMandateSummary'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /standing-mandates/{standingMandateId}/revoke:
+    post:
+      tags: [mandates]
+      summary: Revoke a standing mandate
+      description: PROPOSAL (Danish, M2+). Revoking only ever stops payments.
+      operationId: revokeStandingMandate
+      parameters:
+        - name: standingMandateId
+          in: path
+          required: true
+          schema: {type: string, pattern: "^sm_[A-Za-z0-9]+$"}
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  standing_mandate_id: {type: string}
+                  revoked: {type: boolean}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /policies:
     get:
       tags: [policies]
@@ -1315,6 +1652,164 @@ components:
           description: What the instruction said, in the clerk's words.
         initiator:
           $ref: '#/components/schemas/Initiator'
+        department_id:
+          type: [string, 'null']
+          pattern: "^org_[A-Za-z0-9_]+$"
+          description: |
+            PROPOSAL (Danish, M2+), needs Prajit's and Shoaib's approval. Where in
+            the organisation tree the payment belongs. Defaults to the company's
+            accounts-payable department.
+        entry_route:
+          oneOf:
+            - $ref: '#/components/schemas/EntryRoute'
+            - type: 'null'
+          description: |
+            How the payment reached Pramaan. When omitted: `agent` if the initiator
+            is an agent, otherwise `erp`.
+    EntryRoute:
+      type: string
+      description: |
+        The system the payment came in through, separate from instruction_channel
+        (how the instruction reached the person who keyed it). erp = an ERP
+        connector such as the mock Acme ERP; bank_file = a bulk payment file
+        uploaded to the bank portal; payout_api = a payouts API call; agent = the
+        ADK payables agent through the MCP server.
+      enum: [erp, bank_file, payout_api, agent]
+    Lane:
+      type: string
+      description: |
+        PROPOSAL (Danish, M2+). individual = a person reviews it; batch = signed with
+        the next approval window's batch; auto_release = passed every rule and is
+        logged, no approval.
+      enum: [individual, batch, auto_release]
+    DecisionTrace:
+      type: object
+      description: |
+        PROPOSAL (Danish, M2+). Why the payment went where it did: the department
+        path, every hierarchy rule that fired with where it lives in the tree, the
+        lane row that matched, and the thresholds that applied.
+      additionalProperties: true
+      properties:
+        department:
+          type: string
+        tier_v1:
+          type: integer
+        tier_floor:
+          type: integer
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              rule_id: {type: string}
+              code: {type: string}
+              text: {type: string}
+              min_tier: {type: integer}
+              hard_flag: {type: boolean}
+              path: {type: string, description: "Node names, root first, joined with ' > '"}
+        lane:
+          type: object
+          properties:
+            lane: {$ref: '#/components/schemas/Lane'}
+            row: {type: integer}
+            why: {type: string}
+            hard_flags: {type: array, items: {type: string}}
+        required_levels:
+          type: array
+          items: {type: string}
+    PayeeChecks:
+      type: object
+      description: PROPOSAL (Danish, M2+). The automatic checks run before any approver sees the payment.
+      properties:
+        name_check: {type: string, enum: [match, mismatch, not_found]}
+        bank_name: {type: [string, 'null']}
+        look_alike: {type: boolean}
+        look_alike_of: {type: [string, 'null'], description: The vendor id it resembles}
+        look_alike_score: {type: number}
+        invoice_match: {type: string, enum: [match, mismatch, unknown]}
+        invoice_mismatches: {type: array, items: {type: string}}
+        unusual_amount: {type: boolean}
+        passed: {type: boolean}
+    OrgSettings:
+      type: object
+      description: PROPOSAL (M2+). Each value may only tighten what the node inherits.
+      properties:
+        tier1_paise: {$ref: '#/components/schemas/Paise'}
+        tier2_paise: {$ref: '#/components/schemas/Paise'}
+        tier3_paise: {$ref: '#/components/schemas/Paise'}
+        working_hours_ist:
+          type: object
+          properties:
+            start: {type: string}
+            end: {type: string}
+        approval_windows_ist:
+          type: array
+          items: {type: string, description: "HH:MM in IST"}
+    OrgRule:
+      type: object
+      description: PROPOSAL (M2+). A rule in CEL over the payment's attributes.
+      required: [code, text, expression, min_tier]
+      properties:
+        rule_id: {type: [string, 'null']}
+        code: {type: string, pattern: "^[a-z][a-z0-9_]{1,59}$"}
+        text: {type: string}
+        expression: {type: string, description: "CEL, for example payment.payee.is_new && payment.amount_paise > 100000000"}
+        min_tier: {$ref: '#/components/schemas/Tier'}
+        hard_flag: {type: boolean, default: false}
+        enabled: {type: boolean, default: true}
+    OrgNode:
+      type: object
+      description: PROPOSAL (M2+).
+      required: [node_id, kind, name, settings, rules, inherited_rule_codes]
+      properties:
+        node_id: {type: string}
+        parent_id: {type: [string, 'null']}
+        kind: {type: string, enum: [group, company, plant, department]}
+        name: {type: string}
+        settings: {$ref: '#/components/schemas/OrgSettings'}
+        rules:
+          type: array
+          items: {$ref: '#/components/schemas/OrgRule'}
+        inherited_rule_codes:
+          type: array
+          items: {type: string}
+    BatchSummary:
+      type: object
+      description: PROPOSAL (M2+).
+      required: [batch_id, window_at, status, line_count, total_paise, lines]
+      properties:
+        batch_id: {type: string}
+        window_at: {$ref: '#/components/schemas/Timestamp'}
+        status: {type: string, enum: [pending, decided, expired]}
+        line_count: {type: integer}
+        total_paise: {$ref: '#/components/schemas/Paise'}
+        expires_at: {type: [string, 'null']}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              intent_id: {type: string}
+              amount_paise: {$ref: '#/components/schemas/Paise'}
+              payee_name_at_bank: {type: string}
+              payee_account_last4: {type: string}
+              tier: {$ref: '#/components/schemas/Tier'}
+              checks_passed: {type: boolean}
+    StandingMandateSummary:
+      type: object
+      description: PROPOSAL (M2+). The signed fields are Prajit's; usage is per IST calendar month.
+      properties:
+        standing_mandate_id: {type: string}
+        vendor_id: {type: string}
+        payee_ifsc: {type: string}
+        approver: {type: string}
+        cap_per_payment_paise: {$ref: '#/components/schemas/Paise'}
+        cap_per_month_paise: {$ref: '#/components/schemas/Paise'}
+        max_count: {type: integer}
+        used_this_month_paise: {$ref: '#/components/schemas/Paise'}
+        used_this_month_count: {type: integer}
+        expires_at: {type: [string, 'null']}
+        revoked: {type: boolean}
     IntentDecision:
       type: object
       required: [intent_id, decision, status, tier, reasons, created_at]
@@ -1334,6 +1829,13 @@ components:
             $ref: '#/components/schemas/Reason'
         policy_version:
           type: string
+        lane:
+          $ref: '#/components/schemas/Lane'
+        decision_trace:
+          $ref: '#/components/schemas/DecisionTrace'
+        batch_window_at:
+          type: [string, 'null']
+          description: PROPOSAL (M2+). Set for the batch lane, the window it will be signed in.
         created_at:
           $ref: '#/components/schemas/Timestamp'
     PaymentIntent:
@@ -1391,27 +1893,6 @@ components:
           oneOf:
             - $ref: '#/components/schemas/ApprovalEvidence'
             - type: 'null'
-        lane:
-          oneOf:
-            - $ref: '#/components/schemas/Lane'
-            - type: 'null'
-          description: M2+. Null until the lane sorter has run.
-        rule_hit:
-          oneOf:
-            - $ref: '#/components/schemas/RuleHit'
-            - type: 'null'
-          description: M2+. The rule that decided this payment, and its path in the tree.
-        payee_checks:
-          oneOf:
-            - $ref: '#/components/schemas/PayeeCheck'
-            - type: 'null'
-          description: M2+. The automatic checks run before any approver saw it.
-        standing_mandate_id:
-          type: [string, 'null']
-          description: M2+. Set when a standing mandate auto-released this payment.
-        batch_id:
-          type: [string, 'null']
-          description: M2+. Set when this payment was approved as part of a batch.
         mandate_id:
           type: [string, 'null']
         agent_request_id:
@@ -1422,6 +1903,30 @@ components:
           $ref: '#/components/schemas/Timestamp'
         expires_at:
           type: [string, 'null']
+        department_id:
+          type: [string, 'null']
+          description: PROPOSAL (Danish, M2+).
+        entry_route:
+          $ref: '#/components/schemas/EntryRoute'
+        lane:
+          oneOf:
+            - $ref: '#/components/schemas/Lane'
+            - type: 'null'
+        decision_trace:
+          oneOf:
+            - $ref: '#/components/schemas/DecisionTrace'
+            - type: 'null'
+        payee_checks:
+          oneOf:
+            - $ref: '#/components/schemas/PayeeChecks'
+            - type: 'null'
+        batch_window_at:
+          type: [string, 'null']
+        batch_id:
+          type: [string, 'null']
+        standing_mandate_id:
+          type: [string, 'null']
+          description: PROPOSAL (M2+). Set when the payment auto-released under a standing mandate.
     InvoiceExtraction:
       type: object
       description: |
@@ -1507,11 +2012,64 @@ components:
           type: integer
         step:
           type: string
-          enum: [created, scored, held, pushed, signed, verified, countersigned, released, blocked]
+          enum: [created, scored, held, pushed, signed, verified, voice_started, voice_verified, voice_failed, countersigned, released, blocked]
         at:
           $ref: '#/components/schemas/Timestamp'
         detail:
           type: [string, 'null']
+    VoiceLanguage:
+      type: string
+      enum: [ta, hi, en]
+      description: The language the approver speaks to Gemini Live.
+    VoiceStart:
+      type: object
+      required: [action, language]
+      properties:
+        action:
+          type: string
+          const: start
+        language:
+          $ref: '#/components/schemas/VoiceLanguage'
+    VoiceComplete:
+      type: object
+      required: [action, voice_id, digits]
+      properties:
+        action:
+          type: string
+          const: complete
+        voice_id:
+          type: string
+          pattern: "^vs_[A-Za-z0-9]+$"
+        digits:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: Exactly six ASCII digits, as the approver confirmed them on screen.
+    VoiceStepState:
+      type: object
+      required: [approval_id, voice_id, status, matched, attempts_remaining, language, expires_at]
+      properties:
+        approval_id:
+          type: string
+        voice_id:
+          type: string
+        status:
+          type: string
+          enum: [awaiting_code, passed, retry, expired, fallback_callback]
+        matched:
+          type: boolean
+          description: True only when status is passed.
+        attempts_remaining:
+          type: integer
+          minimum: 0
+          maximum: 3
+        language:
+          $ref: '#/components/schemas/VoiceLanguage'
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        code:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: Only in the answer to start. The app shows it; it is never logged.
     ApprovalSummary:
       type: object
       required: [approval_id, intent_id, tier, amount_paise, payee_name_at_bank, status]
@@ -1872,19 +2430,6 @@ components:
     # Prajit owns the two signed formats below. They are carried here as the
     # fields the screens must display, not as a definition of what is signed.
     # ---------------------------------------------------------------------
-    Lane:
-      type: string
-      description: |
-        Which lane a payment was sorted into. First matching row wins, so
-        nothing slips into a lighter lane:
-
-          1. individual_review - any hard flag, or Tier 2 or 3
-          2. auto_release_standing - known payee inside a valid standing mandate
-          3. auto_release - Tier 0, known payee, no flags
-          4. batch - Tier 1, every check passed, no flags
-
-        The order matters and is the engine's contract, not a display choice.
-      enum: [individual_review, auto_release_standing, auto_release, batch]
     RuleHit:
       type: object
       description: |
@@ -1911,46 +2456,6 @@ components:
           description: |
             When a child node tightened a parent's rule, the parent node id.
             Loosening is rejected by the engine, so this is only ever a tighten.
-    OrgNode:
-      type: object
-      description: |
-        One node of the organisation tree: group, company, plant or department.
-        Read by the policy editor, which shows inherited rules greyed out and
-        blocks an edit that would loosen a parent.
-      required: [node_id, name, kind]
-      properties:
-        node_id:
-          type: string
-        parent_id:
-          type: [string, 'null']
-        name:
-          type: string
-        kind:
-          type: string
-          enum: [group, company, plant, department]
-        rules:
-          type: array
-          items:
-            type: object
-            required: [rule_id, expression]
-            properties:
-              rule_id:
-                type: string
-              expression:
-                type: string
-                description: CEL, the expression language Cloud IAM Conditions use.
-              text:
-                type: string
-                description: The same rule in plain language, for the screen.
-              tier:
-                $ref: '#/components/schemas/Tier'
-              inherited_from:
-                type: [string, 'null']
-                description: Null when this node set it; otherwise the ancestor that did.
-        thresholds_paise:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/Paise'
     ApproverLevel:
       type: string
       description: |

@@ -55,6 +55,7 @@ payment status.
 | `payerAccountLast4` | string | |
 | `purpose` | string or null | usually the invoice number |
 | `instructionChannel` | string | `portal`, `email`, `chat`, `phone`, `agent` |
+| `entryRoute` | string | `erp`, `bank_file`, `payout_api`, `agent`: the system the payment came in through |
 | `initiator` | map | `{ type: "human" \| "agent", id: string }` |
 | `reasons` | array of map | `{ code, text, source, changedFrom?, changedTo? }` |
 | `explanation` | map or null | `{ text, source: "gemini", modelVersion }` |
@@ -150,7 +151,7 @@ step number so ordering is stable.
 | Field | Type | Notes |
 | :--- | :--- | :--- |
 | `n` | number | 1, 2, 3 ... |
-| `step` | string | `created`, `scored`, `held`, `pushed`, `signed`, `verified`, `countersigned`, `released`, `blocked` |
+| `step` | string | `created`, `scored`, `held`, `pushed`, `signed`, `verified`, `voice_started`, `voice_verified`, `voice_failed`, `countersigned`, `released`, `blocked`. The three `voice_` steps appear only on Tier 2 and higher payments (M4) |
 | `at` | timestamp | |
 | `detail` | string or null | one line, plain language |
 

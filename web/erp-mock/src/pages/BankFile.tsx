@@ -16,9 +16,25 @@
  *   moment the upload succeeds would be a lie about where the money is.
  */
 
-import { ErrorState, Money, formatIstTime, readEnv } from '@pramaan/shared';
+import { ErrorState, Money, firebaseAuth, formatIstTime, readEnv } from '@pramaan/shared';
 import { type ChangeEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  try {
+    const user = firebaseAuth().currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+      return headers;
+    }
+  } catch {
+    // fallback
+  }
+  headers['X-Dev-User'] = 'clerk@acme.example';
+  return headers;
+}
 
 interface UploadedLine {
   line_no: number;
@@ -121,8 +137,10 @@ export function BankFile(): ReactNode {
       // Plain fetch, not the generated client: this branch was cut before the
       // file door went into the contract, and a multipart upload is not what
       // the typed JSON client is for.
+      const headers = await getAuthHeaders();
       const res = await fetch(`${env.apiBase}/v1/files/bank`, {
         method: 'POST',
+        headers,
         body: form,
       });
       const body = (await res.json().catch(() => ({}))) as BankFileResult & { detail?: string };
@@ -141,8 +159,9 @@ export function BankFile(): ReactNode {
   // Once uploaded, keep the progress honest: poll until nothing is waiting.
   useEffect(() => {
     if (!result || result.complete) return;
-    const timer = window.setInterval(() => {
-      void fetch(`${env.apiBase}/v1/files/bank/${result.file_id}`)
+    const timer = window.setInterval(async () => {
+      const headers = await getAuthHeaders();
+      void fetch(`${env.apiBase}/v1/files/bank/${result.file_id}`, { headers })
         .then((res) => (res.ok ? res.json() : null))
         .then((body) => {
           if (body) setResult(body as BankFileResult);

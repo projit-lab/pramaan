@@ -28,6 +28,10 @@ export type StepName =
   | 'pushed'
   | 'signed'
   | 'verified'
+  // Tier 2 spoken check (M4); only on tier 2 and higher payments.
+  | 'voice_started'
+  | 'voice_verified'
+  | 'voice_failed'
   | 'countersigned'
   | 'released'
   | 'blocked';

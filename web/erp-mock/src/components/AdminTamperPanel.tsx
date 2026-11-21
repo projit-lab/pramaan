@@ -18,7 +18,7 @@
  * button, and the point lands harder for being obviously a deliberate hole.
  */
 
-import { Money, type WithId, type Hold, maskAccount, readEnv } from '@pramaan/shared';
+import { Money, type WithId, type Hold, firebaseAuth, maskAccount, readEnv } from '@pramaan/shared';
 import { type ReactNode, useState } from 'react';
 
 interface TamperResult {
@@ -34,6 +34,22 @@ type Outcome =
   | { kind: 'released'; detail: string }
   | { kind: 'error'; detail: string };
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const user = firebaseAuth().currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+      return headers;
+    }
+  } catch {
+    // fallback
+  }
+  headers['X-Dev-User'] = 'clerk@acme.example';
+  return headers;
+}
+
 /**
  * Both endpoints belong to Prajit's API and both are local-only. They are
  * called with plain fetch rather than the generated client because neither is
@@ -41,11 +57,12 @@ type Outcome =
  * that must never reach the served OpenAPI, and `/gate/release` arrives with
  * his live-flow branch.
  */
-async function post(base: string, path: string): Promise<Response> {
+async function post(base: string, path: string, bodyObj: unknown = {}): Promise<Response> {
+  const headers = await getAuthHeaders();
   return fetch(`${base}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
+    headers,
+    body: JSON.stringify(bodyObj),
   });
 }
 
@@ -78,7 +95,31 @@ export function AdminTamperPanel({ payment }: { payment: WithId<Hold> }): ReactN
   const release = async () => {
     setOutcome({ kind: 'working' });
     try {
-      const res = await post(env.apiBase, `/v1/gate/release`);
+      let mandateId =
+        payment.mandateId ??
+        (payment as unknown as { mandate_id?: string }).mandate_id ??
+        (payment.approval as unknown as { mandate_id?: string; mandateId?: string } | null | undefined)?.mandate_id ??
+        (payment.approval as unknown as { mandate_id?: string; mandateId?: string } | null | undefined)?.mandateId;
+
+      if (!mandateId) {
+        // Fall back to querying the intent directly
+        const headers = await getAuthHeaders();
+        const intentRes = await fetch(`${env.apiBase}/v1/intents/${payment.intentId}`, { headers });
+        if (intentRes.ok) {
+          const intentData = (await intentRes.json().catch(() => ({}))) as { mandate_id?: string };
+          mandateId = intentData.mandate_id;
+        }
+      }
+
+      if (!mandateId) {
+        setOutcome({
+          kind: 'error',
+          detail: 'No mandate found for this payment. It must be approved before release.',
+        });
+        return;
+      }
+
+      const res = await post(env.apiBase, `/v1/gate/release`, { mandate_id: mandateId });
       const body = (await res.json().catch(() => ({}))) as { detail?: string; title?: string };
       if (res.ok) {
         // Only reachable if the gate accepted, which for a tampered payment

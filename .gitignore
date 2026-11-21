@@ -2,6 +2,7 @@
 .gradle/
 build/
 local.properties
+android/gradle/gradle-daemon-jvm.properties
 *.apk
 *.aab
 captures/
@@ -23,9 +24,11 @@ GoogleService-Info.plist
 venv/
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.local/
 
 # Node
 node_modules/
@@ -42,6 +45,7 @@ coverage/
 service-account*.json
 *-credentials.json
 *.pem
+!services/api/app/domain/attestation_roots/*.pem
 *.p12
 
 # Terraform
