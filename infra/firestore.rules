@@ -70,7 +70,7 @@ service cloud.firestore {
 
     // Requests raised by AI agents. The clerk sees the run they started.
     match /agentRequests/{agentRequestId} {
-      allow read: if isFinance() || isClerk();
+      allow read: if isFinance() || isClerk() || isAnonymousDev();
       allow create, update, delete: if false;
     }
 
