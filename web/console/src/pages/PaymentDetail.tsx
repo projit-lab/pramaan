@@ -29,6 +29,7 @@ import {
   formatIstWithRelative,
   formatIstTime,
   readEnv,
+  useLiveCollection,
   useLiveDocument,
   useLiveSubcollection,
 } from '@pramaan/shared';
@@ -106,6 +107,7 @@ export function PaymentDetail(): ReactNode {
   const { intentId } = useParams<{ intentId: string }>();
   const hold = useLiveDocument<Hold>(COLLECTIONS.holds, intentId);
   const steps = useLiveSubcollection<Step>(COLLECTIONS.holds, intentId, 'steps');
+  const allHolds = useLiveCollection<Hold>(COLLECTIONS.holds);
 
   if (hold.status === 'loading') return <LoadingState label="Loading this payment" />;
 
@@ -131,13 +133,57 @@ export function PaymentDetail(): ReactNode {
   const raised = formatIstWithRelative(payment.createdAt);
   const ordered = [...steps.data].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
 
+  // Previous and next navigation
+  const holdList = allHolds.data;
+  const currentIndex = holdList.findIndex((h) => h.id === intentId);
+  const prevHold = currentIndex > 0 ? holdList[currentIndex - 1] : null;
+  const nextHold = currentIndex >= 0 && currentIndex < holdList.length - 1 ? holdList[currentIndex + 1] : null;
+
   return (
     <>
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Link to="/" className="pm-btn pm-btn--text" style={{ paddingLeft: 0 }}>
-          <Icon name="arrow_back" size="sm" />
-          All payments
-        </Link>
+      {/* Top breadcrumbs and pagination row */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 'var(--space-4)',
+          flexWrap: 'wrap',
+          gap: 'var(--space-2)',
+        }}
+      >
+        <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 14 }}>
+          <Link to="/" style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+            Holds
+          </Link>
+          <span style={{ color: 'var(--ink-muted)' }}>/</span>
+          <span style={{ fontWeight: 500, color: 'var(--ink)' }}>
+            {payment.payeeNameAtBank} {payment.purpose ? `(${payment.purpose})` : ''}
+          </span>
+        </nav>
+
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          {prevHold ? (
+            <Link
+              to={`/payments/${prevHold.id}`}
+              className="pm-btn pm-btn--outlined"
+              style={{ padding: '6px 12px', minHeight: 32, fontSize: 13 }}
+            >
+              <Icon name="arrow_back" size="sm" />
+              Previous
+            </Link>
+          ) : null}
+          {nextHold ? (
+            <Link
+              to={`/payments/${nextHold.id}`}
+              className="pm-btn pm-btn--outlined"
+              style={{ padding: '6px 12px', minHeight: 32, fontSize: 13 }}
+            >
+              Next
+              <Icon name="arrow_forward" size="sm" />
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <StateBandForPayment payment={payment} />

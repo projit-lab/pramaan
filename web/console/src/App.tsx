@@ -23,7 +23,7 @@ export function App(): ReactNode {
     <div className="pm-shell">
       <nav className="pm-side" aria-label="Console sections">
         <div className="pm-side__brand" style={{ padding: '8px 12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <PramaanLockup size={28} />
+          <PramaanLockup size={28} href="/" />
           {env.demoMode ? <DemoModeChip /> : null}
         </div>
 
