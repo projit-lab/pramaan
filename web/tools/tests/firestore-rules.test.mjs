@@ -209,6 +209,13 @@ describe('an anonymous user in demo mode (dev project)', () => {
     await assertSucceeds(getDoc(doc(asAnonDev(), 'payouts', PAYOUT_ID)));
   });
 
+  it('reads the agent run the demo clerk started', async () => {
+    await assertSucceeds(getDoc(doc(asAnonDev(), 'agentRequests', AGENT_REQUEST_ID)));
+    await assertFails(
+      setDoc(doc(asAnonDev(), 'agentRequests', 'ag_forged'), { status: 'held' }),
+    );
+  });
+
   it('cannot write to holds, devices, or payouts', async () => {
     await assertFails(setDoc(doc(asAnonDev(), 'holds', 'pi_forged'), { status: 'released' }));
     await assertFails(setDoc(doc(asAnonDev(), 'devices', 'dv_forged'), { revoked: true }));
