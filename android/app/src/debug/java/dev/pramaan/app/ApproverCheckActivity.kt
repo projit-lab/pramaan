@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import dev.pramaan.app.theme.PramaanTheme
 import dev.pramaan.crypto.AndroidKeyStoreSigner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,8 +63,8 @@ class ApproverCheckActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            PramaanTheme {
+                Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                     var statusMessage by remember { mutableStateOf("Ready. API: $apiBase") }
                     var selectedApprovalId by remember { mutableStateOf("") }
                     var responseLog by remember { mutableStateOf("") }
