@@ -513,3 +513,59 @@ def test_new_intent_writes_the_console_hold_document(tmp_path: Path) -> None:
     assert hold["payeeNameAtBank"]
     assert hold["entryRoute"] == "erp"
     assert hold["lane"] == "individual_review"
+
+
+def test_two_approvals_in_a_row_both_succeed(tmp_path: Path) -> None:
+    """Regression: consuming a nonce must not collide with an earlier consumed one."""
+    client, rt, _ = make_test_env(tmp_path)
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
+    with unit_of_work(rt.sessions) as s:
+        s.add(
+            Device(
+                device_id=new_id("dv"),
+                approver_email="cfo@acme.example",
+                phone_model="Test Phone",
+                public_key_pem=pem,
+                key_security_level="StrongBox",
+                patch_level="2026-10-01",
+                fcm_token=None,
+                revoked=False,
+                enrolled_at=rt.clock(),
+            )
+        )
+    client.post(
+        "/v1/_local/delegations",
+        json={"delegate_email": "cfo@acme.example"},
+        headers={"X-Dev-User": "ap.manager@acme.example"},
+    )
+    cfo = {"X-Dev-User": "cfo@acme.example"}
+    for n in range(2):
+        r = client.post(
+            "/v1/intents",
+            headers={"X-Dev-User": "clerk"},
+            json={
+                "payee_vendor_id": "vd_sri_lakshmi",
+                "amount_paise": "20000000",
+                "purpose": f"INV-40{n}",
+                "instruction_channel": "chat",
+                "entry_route": "erp",
+                "initiator": {"type": "human", "id": "clerk@acme.example"},
+            },
+        )
+        assert r.status_code == 201, r.text
+        intent_id = r.json()["intent_id"]
+        approvals = client.get("/v1/approvals?status=pending", headers=cfo).json()["approvals"]
+        approval_id = next(a for a in approvals if a["intent_id"] == intent_id)["approval_id"]
+        detail = client.get(f"/v1/approvals/{approval_id}", headers=cfo).json()
+        sig = key.sign(base64.b64decode(detail["canonical_b64"]), ec.ECDSA(hashes.SHA256()))
+        r = client.post(
+            f"/v1/approvals/{approval_id}/decision",
+            headers=cfo,
+            json={"decision": "approve", "signature": base64.b64encode(sig).decode()},
+        )
+        assert r.status_code == 200, r.text

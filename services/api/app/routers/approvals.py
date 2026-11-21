@@ -34,6 +34,8 @@ from app.runtime import Runtime, get_runtime, utc_now
 from app.services.approvals import block_by_approver, list_approvals
 from app.services.views import approval_view, aware, ist
 
+CONSUMED = "used:"
+
 router = APIRouter(tags=["approvals"])
 
 
@@ -130,7 +132,7 @@ def decide_approval(
                 409, "Payment no longer held", f"The payment is {intent.status}."
             )
 
-        if not approval.nonce:
+        if not approval.nonce or approval.nonce.startswith(CONSUMED):
             raise ProblemException(
                 409, "Nonce already consumed", "This signing nonce has already been consumed."
             )
@@ -191,7 +193,8 @@ def decide_approval(
             ) from exc
 
         # Consume the single-use nonce immediately
-        approval.nonce = ""
+        # Unique column: mark it used with a unique value, never a shared empty string.
+        approval.nonce = CONSUMED + secrets.token_urlsafe(16)
 
         # If declining or reporting fraud, defer to Danish's block_by_approver
         if body.decision in ("decline", "report_fraud"):
