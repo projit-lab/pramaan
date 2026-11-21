@@ -77,6 +77,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.ai)
+    // Demo builds prove themselves to Firebase App Check with a registered debug token.
+    implementation(libs.firebase.appcheck.debug)
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
