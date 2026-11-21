@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # Local demo: write the live read model (holds, devices, payouts) to the real
     # Firestore with ADC, so the console shows what the local API does.
     USE_FIRESTORE_IN_LOCAL: bool = False
+    # Tier 2+: issue the mandate only after the spoken-code (Gemini Live) check passes.
+    VOICE_STEP_ENABLED: bool = True
+    # AI features. Off (offline stand-ins, clearly labelled) unless USE_REAL_AI is true.
+    USE_REAL_AI: bool = False
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_LOCATION: str = "global"
+    MODEL_ARMOR_LOCATION: str = "asia-south1"
+    MODEL_ARMOR_TEMPLATE: str = "pramaan-invoice-shield"
     FIRESTORE_EMULATOR_HOST: str | None = None
     ATTEST_PATCH_WINDOW_MONTHS: int = 12
     # Check every certificate in an enrolment chain against Google's live attestation

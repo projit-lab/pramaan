@@ -35,6 +35,7 @@ from app.services.approvals import block_by_approver, list_approvals
 from app.services.views import approval_view, aware, ist
 
 CONSUMED = "used:"
+PENDING_VOICE = "pending_voice"
 
 router = APIRouter(tags=["approvals"])
 
@@ -196,6 +197,14 @@ def decide_approval(
         # Unique column: mark it used with a unique value, never a shared empty string.
         approval.nonce = CONSUMED + secrets.token_urlsafe(16)
 
+        voice_required = (
+            body.decision == "approve" and intent.tier >= 2 and rt.settings.VOICE_STEP_ENABLED
+        )
+        if voice_required:
+            approval.decision = PENDING_VOICE
+            approval.pending_signature_b64 = base64.b64encode(signature_der).decode("ascii")
+            approval.pending_summary = json.dumps(server_summary_fields, ensure_ascii=False)
+
         # If declining or reporting fraud, defer to Danish's block_by_approver
         if body.decision in ("decline", "report_fraud"):
             approval_id_val = approval.approval_id
@@ -211,12 +220,41 @@ def decide_approval(
             "status": res["status"],
         }
 
-    # APPROVE path: build mandate with Cloud KMS / Local signer
+    # Tier 2 and above: the signature is verified, but the mandate waits for the
+    # spoken-code check. It can only add a check, never replace the signature.
+    if voice_required:
+        return {
+            "approval_id": approval_id,
+            "decision": "approve",
+            "mandate_id": None,
+            "verified": True,
+            "status": "pending_voice",
+            "next": "voice",
+        }
+
+    return issue_mandate(
+        rt, approval_id, user.email, server_summary_fields, device_spki_der, signature_der, now
+    )
+
+
+def issue_mandate(
+    rt: Runtime,
+    approval_id: str,
+    approver_email: str,
+    server_summary_fields: dict[str, str],
+    device_spki_der: bytes,
+    signature_der: bytes,
+    now: datetime,
+) -> dict[str, Any]:
+    """Build, store and announce the KMS-countersigned mandate for a verified approval.
+
+    Called straight after the signature check (Tier 0-1), or, for Tier 2+, only once
+    the spoken-code check has passed (app/services/voice_flow.py)."""
     with unit_of_work(rt.sessions) as s:
         approval = s.get(Approval, approval_id, with_for_update=True)
         intent = s.get(PaymentIntent, approval.intent_id, with_for_update=True)
         device = s.scalar(
-            select(Device).where(Device.approver_email == user.email, Device.revoked.is_(False))
+            select(Device).where(Device.approver_email == approver_email, Device.revoked.is_(False))
         )
 
         signer = get_mandate_signer(rt.settings)
@@ -233,7 +271,7 @@ def decide_approval(
                 "tier": intent.tier,
                 "policy_version": intent.policy_version,
                 "device_id": device.device_id,
-                "approver": user.email,
+                "approver": approver_email,
                 "key_security_level": device.key_security_level,
                 "patch_level": device.patch_level,
                 "integrity_verdict": "NOT_EVALUATED",
@@ -272,7 +310,7 @@ def decide_approval(
 
         intent.mandate_id = mandate_id
         intent.status = "approved"
-        intent.decided_by = user.email
+        intent.decided_by = approver_email
         intent.updated_at = now
 
         approval.status = "decided"
@@ -304,10 +342,10 @@ def decide_approval(
         event_type="approval.signed",
         company_id=rt.settings.COMPANY_ID,
         intent_id=intent_id_val,
-        actor={"type": "human", "id": user.email},
+        actor={"type": "human", "id": approver_email},
         data={
             "approval_id": approval_id,
-            "approver": user.email,
+            "approver": approver_email,
             "decision": "approve",
             "device_id": device_id_val,
             "key_security_level": device_sec_level,
@@ -340,7 +378,7 @@ def decide_approval(
             intent_id_val,
             {
                 "status": "approved",
-                "approver": user.email,
+                "approver": approver_email,
                 "mandateId": mandate_id,
                 "updatedAt": now,
             },

@@ -63,6 +63,12 @@ CHECK_REASONS = {
 }
 
 
+AI_REASONS = {
+    "model_armor_finding": "The invoice contains text aimed at an AI agent; screening flagged it.",
+    "pressure_language": "The document pushes for urgency or secrecy.",
+}
+
+
 def _problem(status: int, title: str, detail: str, field: str | None = None) -> ProblemException:
     errors = [{"field": field, "detail": detail}] if field else None
     return ProblemException(status, title, detail, errors=errors)
@@ -79,8 +85,16 @@ def _base_settings(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[str, Any]:
-    """`body` is the validated IntentCreate request (see routers/intents.py)."""
+def create_intent(
+    rt: Runtime, body: Any, now: datetime | None = None, ai: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """`body` is the validated IntentCreate request (see routers/intents.py).
+
+    `ai` carries what the payables agent's screening found (services/agent.py):
+    `invoice_mismatches` (fields a rule found differ from the vendor master),
+    `model_armor_finding` and `pressure_language`. Each can only make the payment
+    stricter: add a reason, raise the tier, force individual review."""
+    ai = ai or {}
     now = (now or utc_now(rt)).astimezone(timezone.utc)
     cfg = rt.settings
     company_id = cfg.COMPANY_ID
@@ -201,6 +215,11 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
         inv_result, inv_fields = invoice_match(
             getattr(body, "invoice", None), vendor_info, body.amount
         )
+        if ai.get("invoice_mismatches"):
+            inv_result = "mismatch"
+            inv_fields = tuple(dict.fromkeys([*inv_fields, *ai["invoice_mismatches"]]))
+        armor = bool(ai.get("model_armor_finding"))
+        pressure = bool(ai.get("pressure_language"))
         unusual = unusual_amount(body.amount, paid)
         checks = {
             "name_check": name_result,
@@ -239,10 +258,12 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
                 "passed": checks["passed"],
             },
             "history": {"paid_count": len(paid), "max_paid_paise": max(paid, default=0)},
-            "signals": {"pressure_language": False, "model_armor_finding": False},  # M3
+            "signals": {"pressure_language": pressure, "model_armor_finding": armor},
         }
         hier = evaluate_hierarchy(department_id, tree, attributes, base)
         tier = max(v1.tier, hier.tier_floor)
+        if armor:
+            tier = max(tier, 2)  # an AI-targeted document always gets the voice check too
 
         reasons = list(v1.reasons)
         for code, ok in (
@@ -254,6 +275,23 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
             if not ok:
                 text = CHECK_REASONS[code].format(of=alike_of, fields=", ".join(inv_fields))
                 reasons.append({"code": code, "text": text, "source": "rule"})
+        if armor:
+            reasons.append(
+                {
+                    "code": "model_armor_finding",
+                    "text": AI_REASONS["model_armor_finding"],
+                    # "model_armor" only when Google's Model Armor really screened it
+                    "source": ai.get("finding_source", "rule"),
+                }
+            )
+        if pressure:
+            reasons.append(
+                {
+                    "code": "pressure_language",
+                    "text": AI_REASONS["pressure_language"],
+                    "source": "rule",
+                }
+            )
         seen = {r["code"] for r in reasons}
         for hit in hier.hits:
             if hit.code not in seen:
@@ -279,6 +317,8 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
                     unusual_amount=unusual,
                     standing_mandate_ok=standing_ok,
                     hierarchy_hard_flags=hier.hard_flags,
+                    pressure_language=pressure,
+                    model_armor_finding=armor,
                 )
             )
 
@@ -446,7 +486,9 @@ def _event_payloads(intent: PaymentIntent, approvals: list[Approval]) -> dict[st
             "tier": intent.tier,
             "policy_version": intent.policy_version,
             "reasons": [{"code": r["code"], "source": r["source"]} for r in intent.reasons],
-            "model_armor_finding": None,
+            "model_armor_finding": next(
+                (r["text"] for r in intent.reasons if r["code"] == "model_armor_finding"), None
+            ),
             "approvers": [a.approver_email for a in approvals],
             "lane": intent.lane,
         },

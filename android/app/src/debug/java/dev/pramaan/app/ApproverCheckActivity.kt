@@ -1,5 +1,6 @@
 package dev.pramaan.app
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
@@ -275,8 +276,20 @@ class ApproverCheckActivity : FragmentActivity() {
                                             responseLog += "POST decision HTTP $postCode:\n$postBody\n"
                                             if (postCode in 200..299) {
                                                 val decJson = JSONObject(postBody)
-                                                val mandateId = decJson.optString("mandate_id")
-                                                statusMessage = "APPROVED! Mandate: $mandateId (Verified: true)"
+                                                if (decJson.optString("next") == "voice") {
+                                                    // Tier 2: signature verified, the mandate waits for the spoken code.
+                                                    statusMessage = "Signature verified. Tier 2: say the code to finish."
+                                                    startActivity(
+                                                        Intent(this@ApproverCheckActivity, MainActivity::class.java)
+                                                            .putExtra(MainActivity.EXTRA_APPROVAL_ID, selectedApprovalId)
+                                                            .putExtra(MainActivity.EXTRA_APPROVER, approverEmail)
+                                                            .putExtra(MainActivity.EXTRA_PAYEE, apprJson.optJSONObject("payee")?.optString("name_at_bank") ?: "the payee")
+                                                            .putExtra(MainActivity.EXTRA_AMOUNT_PAISE, apprJson.optString("amount_paise", "0"))
+                                                    )
+                                                } else {
+                                                    val mandateId = decJson.optString("mandate_id")
+                                                    statusMessage = "APPROVED! Mandate: $mandateId (Verified: true)"
+                                                }
                                             } else {
                                                 statusMessage = "Decision failed: HTTP $postCode"
                                             }
