@@ -36,6 +36,7 @@ from app.errors import ProblemException
 from app.runtime import Runtime, utc_now
 from app.services import standing
 from app.services.org import active_delegates, load_people, load_tree
+from app.services.projector import project_new_intent
 from app.services.views import (
     PAID,
     active_policy,
@@ -401,6 +402,7 @@ def create_intent(rt: Runtime, body: Any, now: datetime | None = None) -> dict[s
         POLICY_ACTOR,
         snapshot["decided"],
     )
+    project_new_intent(rt, intent)
     push(rt, intent.intent_id, [(a.approval_id, a.approver_email) for a in approvals], devices, now)
 
     return {
