@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import dev.pramaan.app.theme.PramaanTheme
 import dev.pramaan.crypto.AndroidKeyStoreSigner
 import kotlinx.coroutines.launch
 import java.security.KeyFactory
@@ -62,8 +64,8 @@ class KeyCheckActivity : FragmentActivity() {
         }
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            PramaanTheme {
+                Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                     var statusText by remember { mutableStateOf("Ready") }
                     val scope = rememberCoroutineScope()
 
