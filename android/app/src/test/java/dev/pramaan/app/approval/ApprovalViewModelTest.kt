@@ -301,7 +301,7 @@ class ApprovalViewModelTest {
     @Test
     fun `the Gemini label is word for word the console's`() {
         assertEquals(
-            "Explanation written by Gemini; rules made the decision",
+            "AI summary · Gemini",
             ApprovalCopy.GEMINI_LABEL,
         )
     }

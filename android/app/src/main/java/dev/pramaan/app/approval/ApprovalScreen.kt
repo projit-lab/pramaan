@@ -1,65 +1,96 @@
 package dev.pramaan.app.approval
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.pramaan.app.theme.BandBlocked
+import dev.pramaan.app.theme.BandHeld
+import dev.pramaan.app.theme.BandReleased
+import dev.pramaan.app.theme.Blocked
+import dev.pramaan.app.theme.BlockedSoft
+import dev.pramaan.app.theme.Held
+import dev.pramaan.app.theme.HeldSoft
+import dev.pramaan.app.theme.Ink
+import dev.pramaan.app.theme.InkMuted
+import dev.pramaan.app.theme.Line
+import dev.pramaan.app.theme.LineStrong
+import dev.pramaan.app.theme.NeutralSoft
+import dev.pramaan.app.theme.Primary
+import dev.pramaan.app.theme.PrimaryContainer
+import dev.pramaan.app.theme.PrimaryDeep
+import dev.pramaan.app.theme.Released
+import dev.pramaan.app.theme.ReleasedSoft
+import dev.pramaan.app.theme.SurfaceContainer
+import kotlinx.coroutines.delay
 
 /**
- * The approver's approval screen.
+ * The approver's approval screen, built to PRAMAAN_BRAND_KIT.md (Parts C & E).
  *
- * Built to docs/android-approval-screen-spec.md. The one rule it serves: an
- * approver must be able to spot a wrong payment in three seconds. So the order
- * runs payee, account, amount in figures, amount in words, purpose, who raised
- * it, why it was held -- a fraud gets the payee and the amount wrong, and those
- * are at the top.
- *
- * Colours come from web/shared/src/styles/tokens.css so the phone, the console
- * and the ERP speak one language. Colour never carries meaning alone: every
- * state here also carries its word.
+ * Top half: The state band with seal lines, payee avatar, big 56sp amount, and words.
+ * Bottom half: White sheet with ChangedField card, reason chips, AI explanation,
+ *              and 1-second Hold-to-Approve button.
  */
-
-// Mirrors of the tokens. When tokens.css changes, these change with it.
-private val Held = Color(0xFFB26A00)
-private val Released = Color(0xFF1B7F4B)
-private val Blocked = Color(0xFFB3261E)
-private val Ai = Color(0xFF6B4EFF)
-private val Ink = Color(0xFF1B1C1E)
-private val InkMuted = Color(0xFF5A6169)
-private val SurfaceContainer = Color(0xFFF2F4F7)
-
 @Composable
 fun ApprovalScreen(
     state: ApprovalState,
@@ -69,51 +100,405 @@ fun ApprovalScreen(
     onRetry: () -> Unit,
     minutesRemaining: (ApprovalPayment) -> Long,
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = Color.White,
+    ) {
         when (state) {
             ApprovalState.Loading -> LoadingSkeleton()
 
-            is ApprovalState.Ready -> PaymentBody(state.payment, minutesRemaining) {
-                Buttons(onApprove, onDecline, onReportFraud, enabled = true)
+            is ApprovalState.Ready -> ReadyApprovalScreen(
+                payment = state.payment,
+                onApprove = onApprove,
+                onDecline = onDecline,
+                onReportFraud = onReportFraud,
+                onBack = onBack,
+                minutesRemaining = minutesRemaining,
+                isSigning = false,
+            )
+
+            is ApprovalState.WaitingForFingerprint -> ReadyApprovalScreen(
+                payment = state.payment,
+                onApprove = onApprove,
+                onDecline = onDecline,
+                onReportFraud = onReportFraud,
+                onBack = onBack,
+                minutesRemaining = minutesRemaining,
+                isSigning = false,
+            )
+
+            is ApprovalState.Signing -> ReadyApprovalScreen(
+                payment = state.payment,
+                onApprove = onApprove,
+                onDecline = onDecline,
+                onReportFraud = onReportFraud,
+                onBack = onBack,
+                minutesRemaining = minutesRemaining,
+                isSigning = true,
+            )
+
+            is ApprovalState.Signed -> {
+                when (state.decision) {
+                    Decision.APPROVE -> ReleasedScreen(state.payment, onBack)
+                    else -> NonApprovedScreen(state.payment, state.decision, onBack)
+                }
             }
 
-            // The last look before the finger lands must be at the payment.
-            is ApprovalState.WaitingForFingerprint ->
-                PaymentBody(state.payment, minutesRemaining) {
-                    Buttons(onApprove, onDecline, onReportFraud, enabled = false)
-                }
+            is ApprovalState.Failed -> FailedScreen(
+                state = state,
+                onRetry = onRetry,
+                onBack = onBack,
+                minutesRemaining = minutesRemaining,
+            )
 
-            is ApprovalState.Signing -> PaymentBody(state.payment, minutesRemaining) {
-                Text(
-                    ApprovalCopy.SIGNING,
-                    color = InkMuted,
-                    modifier = Modifier.padding(vertical = 16.dp),
+            is ApprovalState.CannotApprove -> CannotApproveScreen(
+                state = state,
+                onBack = onBack,
+                minutesRemaining = minutesRemaining,
+            )
+        }
+    }
+}
+
+/**
+ * Top state band with cheque-style seal lines (concentric circles + dashed ring).
+ */
+@Composable
+fun StateHeaderBand(
+    bandColor: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(bandColor)
+    ) {
+        // Cheque seal lines ornament in top-right corner
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val center = Offset(size.width + 40f, -40f)
+            val sealColor = Color.White.copy(alpha = 0.40f)
+            val dashedColor = Color.White.copy(alpha = 0.75f)
+
+            // Fine concentric rings
+            for (r in 40..500 step 26) {
+                drawCircle(
+                    color = sealColor,
+                    radius = r.toFloat(),
+                    center = center,
+                    style = Stroke(width = 1.5f),
                 )
             }
 
-            is ApprovalState.Signed -> SignedPanel(state)
+            // Dashed security ring
+            drawCircle(
+                color = dashedColor,
+                radius = 160f,
+                center = center,
+                style = Stroke(
+                    width = 2.5f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f),
+                ),
+            )
+        }
 
-            is ApprovalState.Failed -> PaymentBody(state.payment, minutesRemaining) {
-                Banner(ApprovalCopy.failure(state.cause), Blocked)
-                if (ApprovalCopy.isRetryable(state.cause)) {
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(onClick = onRetry, modifier = tapTarget()) {
-                        Text("Try again")
+        Box(modifier = Modifier.padding(bottom = 20.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ReadyApprovalScreen(
+    payment: ApprovalPayment,
+    onApprove: () -> Unit,
+    onDecline: () -> Unit,
+    onReportFraud: () -> Unit,
+    onBack: () -> Unit,
+    minutesRemaining: (ApprovalPayment) -> Long,
+    isSigning: Boolean,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        // --- TOP HALF: AMBER HELD STATE BAND ---
+        StateHeaderBand(bandColor = BandHeld) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // Top navigation & status chip row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Ink,
+                        )
                     }
+
+                    // Held · Tier chip on white background
+                    Box(
+                        modifier = Modifier
+                            .background(Color.White, RoundedCornerShape(999.dp))
+                            .border(1.dp, Held.copy(alpha = 0.25f), RoundedCornerShape(999.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ClockIcon(color = Held, size = 14)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Held · Tier ${payment.tier}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Held,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Payee initial avatar circle
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color.White, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = payment.payeeNameAtBank.take(1).uppercase(),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Ink,
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // "Paying <Payee>"
+                Text(
+                    text = "Paying",
+                    fontSize = 14.sp,
+                    color = InkMuted,
+                )
+                Text(
+                    text = payment.payeeNameAtBank,
+                    fontSize = 18.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Ink,
+                    textAlign = TextAlign.Center,
+                )
+
+                // Subtext with invoice & initiator
+                val initiatorName = if (payment.raisedByIsAgent) "Agent" else payment.raisedBy.substringBefore('@').replaceFirstChar { it.uppercase() }
+                val subtext = "${payment.purposeInvoice ?: "Invoice"} · pushed by $initiatorName"
+                Text(
+                    text = subtext,
+                    fontSize = 13.sp,
+                    color = InkMuted,
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // Giant 56sp amount
+                Text(
+                    text = payment.amountFigures,
+                    fontSize = 56.sp,
+                    lineHeight = 60.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                    textAlign = TextAlign.Center,
+                )
+
+                // Amount in words
+                Text(
+                    text = payment.amountWords.replaceFirstChar { it.uppercase() },
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = InkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+
+        // --- BOTTOM HALF: WHITE SHEET WITH 16dp SIDE PADDING ---
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
+        ) {
+            // 1. ChangedField card: when reasons record a bank change
+            val bankChangeReason = payment.reasons.firstOrNull {
+                it.changedFrom != null && it.changedTo != null
+            }
+            if (bankChangeReason != null) {
+                ChangedFieldCard(bankChangeReason)
+                Spacer(Modifier.height(14.dp))
+            }
+
+            // 2. Other reason chips
+            val otherReasons = payment.reasons.filter { it != bankChangeReason }
+            if (otherReasons.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    otherReasons.forEach { reason ->
+                        ReasonChipView(reason)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            // 3. AI Explanation card
+            if (payment.geminiExplanation != null) {
+                AiExplanationCard(explanation = payment.geminiExplanation)
+                Spacer(Modifier.height(20.dp))
+            }
+
+            // Expiry countdown note
+            val minutes = minutesRemaining(payment)
+            if (minutes > 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    ClockIcon(color = Held, size = 14)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Expires in $minutes min",
+                        fontSize = 13.sp,
+                        color = Held,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
             }
 
-            is ApprovalState.CannotApprove -> PaymentBody(state.payment, minutesRemaining) {
-                // No Approve button at all, rather than a disabled one.
-                Banner(ApprovalCopy.blocked(state.blocker, state.expiredAtIst), Held)
-                if (state.decidedBy != null) {
-                    Spacer(Modifier.height(8.dp))
+            // 4. HoldToApprove button
+            if (isSigning) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .background(Primary, RoundedCornerShape(999.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        "${state.decidedWhat?.label() ?: "Decided"} by ${state.decidedBy}" +
-                            (state.decidedAtIst?.let { ", $it" } ?: ""),
-                        color = InkMuted,
+                        text = ApprovalCopy.SIGNING,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            } else {
+                HoldToApproveButton(
+                    amountText = payment.amountFigures,
+                    onApproved = onApprove,
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // 5. Decline button
+            OutlinedButton(
+                onClick = onDecline,
+                enabled = !isSigning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = LineStrong,
+                ),
+            ) {
+                Text(
+                    text = "Decline",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Ink,
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Report fraud text button
+            TextButton(
+                onClick = onReportFraud,
+                enabled = !isSigning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+            ) {
+                Text(
+                    text = "Report fraud",
+                    color = Blocked,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ChangedField: old value struck through, arrow, new value in red on a soft red card.
+ */
+@Composable
+private fun ChangedFieldCard(reason: Reason) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(BlockedSoft, RoundedCornerShape(12.dp))
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = "Warning",
+                tint = Blocked,
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(top = 2.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = reason.text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Blocked,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = reason.changedFrom ?: "",
                         fontSize = 14.sp,
+                        color = InkMuted,
+                        textDecoration = TextDecoration.LineThrough,
+                    )
+                    Text(
+                        text = "  →  ",
+                        fontSize = 14.sp,
+                        color = InkMuted,
+                    )
+                    Text(
+                        text = reason.changedTo ?: "",
+                        fontSize = 14.sp,
+                        color = Blocked,
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
@@ -121,309 +506,565 @@ fun ApprovalScreen(
     }
 }
 
-private fun Decision.label(): String = when (this) {
-    Decision.APPROVE -> "Approved"
-    Decision.DECLINE -> "Declined"
-    Decision.REPORT_FRAUD -> "Reported as fraud"
-}
-
-/** A spinner alone on a payment screen reads as "something is happening to the money". */
+/**
+ * ReasonChip: soft rounded pill with text and source badge.
+ */
 @Composable
-private fun LoadingSkeleton() {
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        SkeletonBar(0.7f, 28.dp)
-        Spacer(Modifier.height(12.dp))
-        SkeletonBar(0.4f, 16.dp)
-        Spacer(Modifier.height(28.dp))
-        SkeletonBar(0.6f, 48.dp)
-        Spacer(Modifier.height(10.dp))
-        SkeletonBar(0.8f, 18.dp)
-        Spacer(Modifier.height(28.dp))
-        repeat(3) {
-            SkeletonBar(0.5f, 28.dp)
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-@Composable
-private fun SkeletonBar(widthFraction: Float, height: androidx.compose.ui.unit.Dp) {
+private fun ReasonChipView(reason: Reason) {
     Box(
-        Modifier
-            .fillMaxWidth(widthFraction)
-            .height(height)
-            .background(SurfaceContainer, RoundedCornerShape(8.dp))
-    )
-}
-
-@Composable
-private fun PaymentBody(
-    payment: ApprovalPayment,
-    minutesRemaining: (ApprovalPayment) -> Long,
-    actions: @Composable () -> Unit,
-) {
-    var revealed by remember { mutableStateOf(false) }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+        modifier = Modifier
+            .background(NeutralSoft, RoundedCornerShape(999.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
-        // 1. Payee, largest on the screen.
-        Text(
-            payment.payeeNameAtBank,
-            fontSize = 26.sp,
-            lineHeight = 32.sp,
-            fontWeight = FontWeight.Medium,
-            color = Ink,
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        // 2. Account and IFSC. Tap reveals the full number; the reveal is logged
-        //    server-side by the caller that flips this flag in a real build.
-        Text(
-            text = if (revealed) {
-                "${payment.payeeAccountFull} · ${payment.payeeIfsc}"
-            } else {
-                "${payment.payeeAccountMasked} · ${payment.payeeIfsc}"
-            },
-            fontSize = 15.sp,
-            color = InkMuted,
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .clickable { revealed = !revealed }
-                .semantics {
-                    contentDescription = if (revealed) {
-                        "Account ${payment.payeeAccountFull}, tap to hide"
-                    } else {
-                        "Account ending ${payment.payeeAccountFull.takeLast(4)}, tap to reveal"
-                    }
-                },
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-        // 3 and 4. Figures and words in one visual block: the transposition catch.
-        Text(
-            payment.amountFigures,
-            fontSize = 44.sp,
-            lineHeight = 52.sp,
-            fontWeight = FontWeight.Medium,
-            color = Ink,
-        )
-        Text(
-            payment.amountWords,
-            fontSize = 16.sp,
-            lineHeight = 22.sp,
-            color = InkMuted,
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-        // 5. Purpose.
-        payment.purposeInvoice?.let {
-            LabelledRow("Invoice", it)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = reason.text,
+                fontSize = 13.sp,
+                color = Ink,
+            )
         }
-
-        // 6. Who raised it. A machine must never have to be worked out.
-        LabelledRow(
-            label = if (payment.raisedByIsAgent) "Raised by an AI agent" else "Raised by",
-            value = payment.raisedBy,
-            valueColor = if (payment.raisedByIsAgent) Ai else Ink,
-        )
-
-        LabelledRow("Tier", "Tier ${payment.tier}")
-
-        Spacer(Modifier.height(16.dp))
-
-        // 7. Every reason, as text. Never an icon alone.
-        if (payment.reasons.isNotEmpty()) {
-            Text("Why this is waiting", fontSize = 13.sp, color = InkMuted)
-            Spacer(Modifier.height(8.dp))
-            payment.reasons.forEach { ReasonChip(it) }
-        }
-
-        // 8. Anything Gemini wrote, labelled word for word as the console labels it.
-        payment.geminiExplanation?.let {
-            Spacer(Modifier.height(16.dp))
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFF3F0FF), RoundedCornerShape(12.dp))
-                    .padding(12.dp)
-            ) {
-                Text(ApprovalCopy.GEMINI_LABEL, fontSize = 12.sp, color = Ai)
-                Spacer(Modifier.height(4.dp))
-                Text(it, fontSize = 14.sp, lineHeight = 20.sp, color = Ink)
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // 9. The expiry.
-        val minutes = minutesRemaining(payment)
-        if (minutes > 0) {
-            Text("Expires in $minutes min", fontSize = 14.sp, color = Held)
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        actions()
-
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun LabelledRow(label: String, value: String, valueColor: Color = Ink) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, fontSize = 14.sp, color = InkMuted)
-        Text(value, fontSize = 14.sp, color = valueColor, fontWeight = FontWeight.Medium)
     }
 }
 
 /**
- * A reason that records a change shows the old value struck through and the new
- * one in red. This is the sentence that saves the money.
+ * AiExplanation: soft card labelled "AI summary · Gemini" with sparkles.
  */
 @Composable
-private fun ReasonChip(reason: Reason) {
-    Column(
-        Modifier
+private fun AiExplanationCard(explanation: String) {
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .background(SurfaceContainer, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .background(PrimaryContainer, RoundedCornerShape(12.dp))
+            .padding(14.dp)
     ) {
-        Text(reason.text, fontSize = 14.sp, lineHeight = 20.sp, color = Ink)
-        if (reason.changedFrom != null && reason.changedTo != null) {
-            Spacer(Modifier.height(6.dp))
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                SparkleIcon(color = Primary, size = 16)
+                Spacer(Modifier.width(6.dp))
                 Text(
-                    reason.changedFrom,
-                    fontSize = 14.sp,
-                    color = InkMuted,
-                    textDecoration = TextDecoration.LineThrough,
+                    text = ApprovalCopy.GEMINI_LABEL,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Primary,
                 )
-                Text("  →  ", fontSize = 14.sp, color = InkMuted)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = explanation,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = Ink,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Gemini flagged this change. Your signature releases it.",
+                fontSize = 12.sp,
+                color = InkMuted,
+            )
+        }
+    }
+}
+
+/**
+ * HoldToApprove: Press-and-hold button filling with primaryDeep over 1 second.
+ */
+@Composable
+fun HoldToApproveButton(
+    amountText: String,
+    onApproved: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var isHolding by remember { mutableStateOf(false) }
+    var holdFraction by remember { mutableFloatStateOf(0f) }
+    var triggered by remember { mutableStateOf(false) }
+
+    val animatedFraction by animateFloatAsState(
+        targetValue = holdFraction,
+        animationSpec = if (isHolding) tween(durationMillis = 50) else tween(durationMillis = 200),
+        label = "HoldProgress",
+    )
+
+    LaunchedEffect(isHolding) {
+        if (isHolding && !triggered) {
+            val startTime = System.currentTimeMillis()
+            while (isHolding && !triggered) {
+                val elapsed = System.currentTimeMillis() - startTime
+                val progress = (elapsed / 1000f).coerceIn(0f, 1f)
+                holdFraction = progress
+                if (progress >= 1.0f) {
+                    triggered = true
+                    onApproved()
+                    break
+                }
+                delay(30)
+            }
+        } else if (!isHolding && !triggered) {
+            holdFraction = 0f
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Primary)
+                .pointerInput(triggered) {
+                    if (!triggered) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            isHolding = true
+                            waitForUpOrCancellation()
+                            isHolding = false
+                        }
+                    }
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // Progress fill bar from left to right in primaryDeep
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedFraction)
+                    .fillMaxHeight()
+                    .background(PrimaryDeep)
+            )
+
+            // Centered content
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FingerprintIcon(color = Color.White, size = 20)
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    reason.changedTo,
-                    fontSize = 14.sp,
-                    color = Blocked,
+                    text = when {
+                        triggered -> "Signed on this phone"
+                        isHolding -> "Keep holding…"
+                        else -> "Hold to approve $amountText"
+                    },
+                    color = Color.White,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
+
+        Spacer(Modifier.height(6.dp))
         Text(
-            when (reason.source) {
-                "gemini" -> "AI-written"
-                "model_armor" -> "Model Armor"
-                else -> "rule"
-            },
-            fontSize = 11.sp,
-            color = if (reason.source == "gemini") Ai else InkMuted,
+            text = "Try it: press and hold for one second",
+            fontSize = 12.sp,
+            color = InkMuted,
         )
     }
 }
 
 /**
- * Decline sits above Approve on purpose: Approve must not be the easiest reflex
- * target, and the two are far enough apart that one thumb cannot catch both.
+ * ReleasedScreen: The green celebration screen after successful signing and release.
  */
 @Composable
-private fun Buttons(
-    onApprove: () -> Unit,
-    onDecline: () -> Unit,
-    onReportFraud: () -> Unit,
-    enabled: Boolean,
+fun ReleasedScreen(
+    payment: ApprovalPayment,
+    onBack: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = onDecline,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().then(tapTarget()),
-        ) { Text("Decline") }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        StateHeaderBand(bandColor = BandReleased) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink)
+                    }
+                }
 
-        Spacer(Modifier.height(16.dp))
+                // Big green tick circle (96dp)
+                Box(
+                    modifier = Modifier
+                        .size(96.dp)
+                        .background(ReleasedSoft, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Released",
+                        tint = Released,
+                        modifier = Modifier.size(54.dp),
+                    )
+                }
 
-        Button(
-            onClick = onApprove,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().then(tapTarget()),
-            colors = ButtonDefaults.buttonColors(containerColor = Released),
-        ) { Text("Approve with fingerprint") }
+                Spacer(Modifier.height(16.dp))
 
-        Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Approved and released",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Ink,
+                )
 
-        TextButton(
-            onClick = onReportFraud,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().then(tapTarget()),
-        ) { Text("Report fraud", color = Blocked) }
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = payment.amountFigures,
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                )
+
+                Text(
+                    text = "to ${payment.payeeNameAtBank} ••${payment.payeeAccountFull.takeLast(4)}",
+                    fontSize = 15.sp,
+                    color = InkMuted,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Hardware-backed badge
+                Box(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(999.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "Signed on this phone · StrongBox hardware",
+                        fontSize = 13.sp,
+                        color = Released,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = ApprovalCopy.SIGNED_APPROVE,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                color = InkMuted,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(999.dp),
+            ) {
+                Text("Back to approvals", color = Primary)
+            }
+        }
     }
 }
 
-private fun tapTarget(): Modifier = Modifier.heightIn(min = 48.dp)
-
-/** Says what was signed, not merely that something was. */
 @Composable
-private fun SignedPanel(state: ApprovalState.Signed) {
-    val payment = state.payment
+private fun NonApprovedScreen(
+    payment: ApprovalPayment,
+    decision: Decision,
+    onBack: () -> Unit,
+) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            state.decision.label(),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Medium,
-            color = when (state.decision) {
-                Decision.APPROVE -> Released
-                else -> Blocked
-            },
+        StateHeaderBand(bandColor = BandBlocked) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .background(BlockedSoft, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = "Declined",
+                        tint = Blocked,
+                        modifier = Modifier.size(44.dp),
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    text = if (decision == Decision.DECLINE) "Declined" else "Reported as fraud",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Ink,
+                )
+
+                Text(
+                    text = "${payment.amountFigures} to ${payment.payeeNameAtBank}",
+                    fontSize = 15.sp,
+                    color = InkMuted,
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = ApprovalCopy.signed(decision),
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                color = InkMuted,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(999.dp),
+            ) {
+                Text("Back to approvals", color = Primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FailedScreen(
+    state: ApprovalState.Failed,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    minutesRemaining: (ApprovalPayment) -> Long,
+) {
+    ReadyApprovalScreen(
+        payment = state.payment,
+        onApprove = onRetry,
+        onDecline = onBack,
+        onReportFraud = {},
+        onBack = onBack,
+        minutesRemaining = minutesRemaining,
+        isSigning = false,
+    )
+}
+
+@Composable
+private fun CannotApproveScreen(
+    state: ApprovalState.CannotApprove,
+    onBack: () -> Unit,
+    minutesRemaining: (ApprovalPayment) -> Long,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        StateHeaderBand(bandColor = BandHeld) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink)
+                    }
+                }
+                Text(
+                    text = state.payment.amountFigures,
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Ink,
+                )
+                Text(
+                    text = "to ${state.payment.payeeNameAtBank}",
+                    fontSize = 15.sp,
+                    color = InkMuted,
+                )
+            }
+        }
+
+        Column(modifier = Modifier.padding(20.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(HeldSoft, RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Text(
+                    text = ApprovalCopy.blocked(state.blocker, state.expiredAtIst),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = Held,
+                )
+            }
+
+            if (state.decidedBy != null) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Decided by ${state.decidedBy} (${state.decidedWhat ?: ""})" +
+                        (state.decidedAtIst?.let { ", $it" } ?: ""),
+                    fontSize = 13.sp,
+                    color = InkMuted,
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(999.dp),
+            ) {
+                Text("Back to approvals", color = Primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingSkeleton() {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(20.dp)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(0.7f)
+                .height(32.dp)
+                .background(SurfaceContainer, RoundedCornerShape(8.dp))
         )
         Spacer(Modifier.height(16.dp))
-        Text(payment.payeeNameAtBank, fontSize = 18.sp, color = Ink)
-        Text(payment.payeeAccountMasked, fontSize = 14.sp, color = InkMuted)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            payment.amountFigures,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Medium,
-            color = Ink,
-        )
-        Text(
-            payment.amountWords,
-            fontSize = 14.sp,
-            color = InkMuted,
-            modifier = Modifier.clearAndSetSemantics { },
+        Box(
+            Modifier
+                .fillMaxWidth(0.5f)
+                .height(18.dp)
+                .background(SurfaceContainer, RoundedCornerShape(8.dp))
         )
         Spacer(Modifier.height(24.dp))
-        Text(
-            ApprovalCopy.signed(state.decision),
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            color = InkMuted,
+        Box(
+            Modifier
+                .fillMaxWidth(0.8f)
+                .height(56.dp)
+                .background(SurfaceContainer, RoundedCornerShape(8.dp))
+        )
+        Spacer(Modifier.height(32.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .background(SurfaceContainer, RoundedCornerShape(12.dp))
+        )
+    }
+}
+
+// ----------------- Custom Vector Icons -----------------
+
+@Composable
+fun ClockIcon(color: Color, size: Int = 16) {
+    Canvas(modifier = Modifier.size(size.dp)) {
+        val r = this.size.minDimension / 2f - 2f
+        val c = Offset(this.size.width / 2f, this.size.height / 2f)
+        drawCircle(color = color, radius = r, center = c, style = Stroke(width = 1.8f))
+        // Hands
+        drawLine(
+            color = color,
+            start = c,
+            end = Offset(c.x, c.y - r * 0.55f),
+            strokeWidth = 1.8f,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = c,
+            end = Offset(c.x + r * 0.45f, c.y),
+            strokeWidth = 1.8f,
+            cap = StrokeCap.Round,
         )
     }
 }
 
 @Composable
-private fun Banner(text: String, tone: Color) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .background(tone.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
-            .padding(14.dp)
-    ) {
-        Text(text, fontSize = 14.sp, lineHeight = 20.sp, color = Ink)
+fun SparkleIcon(color: Color, size: Int = 16) {
+    Canvas(modifier = Modifier.size(size.dp)) {
+        val w = this.size.width
+        val h = this.size.height
+        val path = Path().apply {
+            moveTo(w / 2f, 0f)
+            quadraticTo(w / 2f, h / 2f, w, h / 2f)
+            quadraticTo(w / 2f, h / 2f, w / 2f, h)
+            quadraticTo(w / 2f, h / 2f, 0f, h / 2f)
+            quadraticTo(w / 2f, h / 2f, w / 2f, 0f)
+            close()
+        }
+        drawPath(path = path, color = color)
+    }
+}
+
+@Composable
+fun FingerprintIcon(color: Color, size: Int = 20) {
+    Canvas(modifier = Modifier.size(size.dp)) {
+        val c = Offset(this.size.width / 2f, this.size.height / 2f)
+        val stroke = Stroke(width = 1.8f, cap = StrokeCap.Round)
+        // Concentric fingerprint arches
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(c.x - 3f, c.y - 4f),
+            size = androidx.compose.ui.geometry.Size(6f, 8f),
+            style = stroke,
+        )
+        drawArc(
+            color = color,
+            startAngle = 160f,
+            sweepAngle = 220f,
+            useCenter = false,
+            topLeft = Offset(c.x - 6f, c.y - 7f),
+            size = androidx.compose.ui.geometry.Size(12f, 14f),
+            style = stroke,
+        )
+        drawArc(
+            color = color,
+            startAngle = 150f,
+            sweepAngle = 240f,
+            useCenter = false,
+            topLeft = Offset(c.x - 9f, c.y - 10f),
+            size = androidx.compose.ui.geometry.Size(18f, 20f),
+            style = stroke,
+        )
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import dev.pramaan.app.theme.PramaanTheme
 import dev.pramaan.crypto.AndroidKeyStoreSigner
 import kotlinx.coroutines.launch
 import java.security.KeyFactory
@@ -62,7 +63,7 @@ class KeyCheckActivity : FragmentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            PramaanTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var statusText by remember { mutableStateOf("Ready") }
                     val scope = rememberCoroutineScope()

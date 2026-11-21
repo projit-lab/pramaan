@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.FirebaseApp
+import dev.pramaan.app.theme.PramaanTheme
 import dev.pramaan.app.voice.GeminiLiveVoiceSession
 import dev.pramaan.app.voice.HttpVoiceStepApi
 import dev.pramaan.app.voice.KeypadVoiceConversation
@@ -50,7 +51,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         val hasFirebase = FirebaseApp.initializeApp(this) != null || FirebaseApp.getApps(this).isNotEmpty()
         setContent {
-            MaterialTheme {
+            PramaanTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.safeDrawingPadding()) { Harness(hasFirebase) }
                 }

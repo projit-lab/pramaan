@@ -157,5 +157,5 @@ object ApprovalCopy {
     }
 
     /** Word for word the console's label, so the two never drift. */
-    const val GEMINI_LABEL = "Explanation written by Gemini; rules made the decision"
+    const val GEMINI_LABEL = "AI summary · Gemini"
 }

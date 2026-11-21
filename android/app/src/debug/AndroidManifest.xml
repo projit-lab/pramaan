@@ -3,6 +3,16 @@
 
     <application>
         <activity
+            android:name=".ApprovalPreviewActivity"
+            android:label="Pramaan Approval"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".KeyCheckActivity"
             android:label="Pramaan Key Check"
             android:exported="true">
